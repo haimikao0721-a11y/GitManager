@@ -1,5 +1,12 @@
 ﻿# 更新记录
 
+## Unreleased
+
+- **修复签出/暂存等操作报 `index.lock: Permission denied`**：核心按仓库串行执行 Git 命令，避免状态刷新与写操作互相争抢锁。
+- 对 `index.lock` 瞬时占用自动重试（最多 4 次，指数退避）；仍失败时提示关闭 Cursor / PyCharm 的 Git 操作，而不是直接抛原始错误。
+- 所有 Git 命令设置 `GIT_OPTIONAL_LOCKS=0`，只读的 `git status` 不再抢写 `index.lock`。
+- 前端在 Git 写操作进行中禁用暂存/取消暂存/签出等入口，避免连续点击造成并发写。
+
 ## 0.0.2 - 2026-11-27
 
 修复启动与分发问题，收敛为单一启动点。

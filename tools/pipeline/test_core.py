@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -109,6 +111,43 @@ class Core:
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
+
+
+def hold_index_lock(repo: Path, seconds: float, ready: threading.Event) -> None:
+    """Hold .git/index.lock exclusively, like another Git client would."""
+    lock = repo / ".git" / "index.lock"
+    kernel32 = ctypes.windll.kernel32
+    create_file = kernel32.CreateFileW
+    create_file.restype = ctypes.c_void_p
+    create_file.argtypes = [
+        ctypes.c_wchar_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+    ]
+    handle = create_file(
+        str(lock),
+        0x80000000 | 0x40000000,  # GENERIC_READ | GENERIC_WRITE
+        0,  # no sharing: Git gets a sharing violation / Permission denied
+        None,
+        2,  # CREATE_ALWAYS
+        0x80,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    if not handle or handle == ctypes.c_void_p(-1).value:
+        raise OSError(f"cannot create {lock}")
+    ready.set()
+    try:
+        time.sleep(seconds)
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def main() -> int:
@@ -221,12 +260,36 @@ def main() -> int:
         before = core.rpc("repo.history", {"path": str(repo), "filter": "all", "limit": 2000})["count"]
         readme = repo / "README.md"
         readme.write_text(readme.read_text(encoding="utf-8") + "\nintegration test\n", encoding="utf-8")
+
+        ready = threading.Event()
+        holder = threading.Thread(target=hold_index_lock, args=(repo, 0.8, ready), daemon=True)
+        holder.start()
+        if not ready.wait(2):
+            raise RuntimeError("index.lock holder did not start")
+        stage_started = time.time()
         core.rpc("repo.stage", {"path": str(repo), "paths": ["README.md"]})
+        stage_elapsed = time.time() - stage_started
+        holder.join(timeout=3)
+        check(stage_elapsed >= 0.7, "stage retries index.lock")
         staged = core.rpc("repo.status", {"path": str(repo)})
         check(any(item["staged"] for item in staged["files"]), "stage file")
         core.rpc("repo.commit", {"path": str(repo), "message": "integration test commit"})
         after = core.rpc("repo.history", {"path": str(repo), "filter": "all", "limit": 2000})["count"]
         check(after == before + 1, "commit adds history node")
+
+        target = git(repo, "rev-parse", "HEAD~1")
+        ready = threading.Event()
+        holder = threading.Thread(target=hold_index_lock, args=(repo, 0.8, ready), daemon=True)
+        holder.start()
+        if not ready.wait(2):
+            raise RuntimeError("index.lock holder did not start")
+        checkout_started = time.time()
+        core.rpc("repo.checkout", {"path": str(repo), "target": target})
+        checkout_elapsed = time.time() - checkout_started
+        holder.join(timeout=3)
+        check(checkout_elapsed >= 0.7, "checkout retries index.lock")
+        check(git(repo, "rev-parse", "HEAD") == target, "checkout target applied")
+        core.rpc("repo.branch.switch", {"path": str(repo), "name": "main"})
 
         with urllib.request.urlopen(core.base + "/", timeout=5) as response:
             html = response.read().decode()

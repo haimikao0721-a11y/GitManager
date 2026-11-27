@@ -85,6 +85,10 @@ json RunChecked(const std::string& path, const std::vector<std::string>& args,
     if (!result.ok) {
         std::string message = result.Text();
         if (message.empty()) message = "Git 命令失败（exit " + std::to_string(result.exitCode) + "）";
+        if (IsIndexLockError(message)) {
+            message = "仓库正被另一个 Git 进程占用（index.lock）。\n"
+                      "请关闭 Cursor / PyCharm 等工具的 Git 操作，或稍后重试。\n\n" + message;
+        }
         throw std::runtime_error(message);
     }
     return json{{"output", result.Text()}};

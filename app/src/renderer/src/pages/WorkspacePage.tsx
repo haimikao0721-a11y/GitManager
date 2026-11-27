@@ -534,10 +534,10 @@ export function WorkspacePage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => stageFiles()} disabled={files.length === 0}>
+                  <Button variant="ghost" size="sm" onClick={() => stageFiles()} disabled={files.length === 0 || loading.mutation}>
                     <Check className="h-3.5 w-3.5" /> 全部暂存
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => unstageFiles()} disabled={staged.length === 0}>
+                  <Button variant="ghost" size="sm" onClick={() => unstageFiles()} disabled={staged.length === 0 || loading.mutation}>
                     <Undo2 className="h-3.5 w-3.5" /> 全部取消
                   </Button>
                 </div>
@@ -560,6 +560,7 @@ export function WorkspacePage() {
                         onUnstage={() => unstageFiles([file.path])}
                         onDiscard={() => requestDiscard(file)}
                         onResolve={(side) => resolveConflict(file.path, side)}
+                        disabled={loading.mutation}
                       />
                     ))}
                   </div>
@@ -1000,13 +1001,15 @@ function FileRow({
   onStage,
   onUnstage,
   onDiscard,
-  onResolve
+  onResolve,
+  disabled = false
 }: {
   file: StatusFile
   onStage: () => void
   onUnstage: () => void
   onDiscard: () => void
   onResolve: (side: 'ours' | 'theirs') => void
+  disabled?: boolean
 }) {
   const variant = file.conflicted
     ? 'danger'
@@ -1030,10 +1033,10 @@ function FileRow({
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         {file.conflicted ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => onResolve('ours')}>
+            <Button size="sm" variant="ghost" onClick={() => onResolve('ours')} disabled={disabled}>
               用我的
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => onResolve('theirs')}>
+            <Button size="sm" variant="ghost" onClick={() => onResolve('theirs')} disabled={disabled}>
               用对方的
             </Button>
           </>
@@ -1041,14 +1044,14 @@ function FileRow({
           <>
             {file.staged ? (
               <Tooltip content="取消暂存">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onUnstage}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onUnstage} disabled={disabled}>
                   <Undo2 className="h-3.5 w-3.5" />
                 </Button>
               </Tooltip>
             ) : null}
             {file.unstaged || file.untracked ? (
               <Tooltip content="暂存">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onStage}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onStage} disabled={disabled}>
                   <Check className="h-3.5 w-3.5" />
                 </Button>
               </Tooltip>
@@ -1060,6 +1063,7 @@ function FileRow({
                   variant="ghost"
                   className="h-7 w-7 text-[var(--faint)] hover:text-[var(--danger)]"
                   onClick={onDiscard}
+                  disabled={disabled}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

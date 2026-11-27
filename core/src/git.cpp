@@ -1,10 +1,35 @@
 #include "git.hpp"
 
+#include <algorithm>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace gs {
 
 namespace {
+
+std::mutex g_repoLocksMutex;
+std::unordered_map<std::string, std::weak_ptr<std::mutex>> g_repoLocks;
+
+std::string RepoLockKey(const std::string& path) {
+    std::string key = ToLower(Trim(path));
+    std::replace(key.begin(), key.end(), '/', '\\');
+    while (key.size() > 1 && key.back() == '\\') key.pop_back();
+    return key;
+}
+
+std::shared_ptr<std::mutex> RepoLock(const std::string& path) {
+    std::lock_guard<std::mutex> guard(g_repoLocksMutex);
+    const std::string key = RepoLockKey(path);
+    std::shared_ptr<std::mutex> lock = g_repoLocks[key].lock();
+    if (!lock) {
+        lock = std::make_shared<std::mutex>();
+        g_repoLocks[key] = lock;
+    }
+    return lock;
+}
 
 std::string StripGitSuffix(std::string repo) {
     if (EndsWith(ToLower(repo), ".git")) repo = repo.substr(0, repo.size() - 4);
@@ -222,8 +247,10 @@ std::vector<std::string> SplitLines(const std::string& text) {
     return lines;
 }
 
-GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& args,
-                 bool allowPrompt, int timeoutMs) {
+namespace {
+
+GitResult RunGitOnce(const std::string& repoPath, const std::vector<std::string>& args,
+                     bool allowPrompt, int timeoutMs) {
     std::vector<std::wstring> wide;
     if (!repoPath.empty()) {
         wide.push_back(L"-C");
@@ -238,6 +265,8 @@ GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& ar
     std::vector<std::pair<std::wstring, std::wstring>> env{
         {L"GIT_TERMINAL_PROMPT", L"0"},
         {L"GCM_INTERACTIVE", allowPrompt ? L"auto" : L"Never"},
+        // Read-only commands such as `git status` must not take index.lock.
+        {L"GIT_OPTIONAL_LOCKS", L"0"},
         {L"LANG", L"C"},
         {L"LC_ALL", L"C"},
     };
@@ -248,6 +277,39 @@ GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& ar
     result.output = process.output;
     result.ok = process.launched && !process.timedOut && process.exitCode == 0;
     return result;
+}
+
+}  // namespace
+
+bool IsIndexLockError(const std::string& output) {
+    std::string lower = ToLower(output);
+    if (lower.find("index.lock") == std::string::npos) return false;
+    return lower.find("permission denied") != std::string::npos ||
+           lower.find("file exists") != std::string::npos ||
+           lower.find("unable to create") != std::string::npos ||
+           lower.find("another git process") != std::string::npos;
+}
+
+GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& args,
+                 bool allowPrompt, int timeoutMs) {
+    std::unique_lock<std::mutex> guard;
+    if (!repoPath.empty()) {
+        guard = std::unique_lock<std::mutex>(*RepoLock(repoPath));
+    }
+
+    // A repository has one index.lock. Other Git clients (Cursor, PyCharm, a
+    // running `git status`) can hold it for a moment, so retry transient lock
+    // failures instead of failing the user's checkout/stage immediately.
+    constexpr int kMaxRetries = 4;
+    for (int attempt = 0;; ++attempt) {
+        GitResult result = RunGitOnce(repoPath, args, allowPrompt, timeoutMs);
+        if (result.ok || attempt >= kMaxRetries || !IsIndexLockError(result.output)) {
+            return result;
+        }
+        if (guard.owns_lock()) guard.unlock();
+        Sleep(static_cast<DWORD>(150 * (1 << attempt)));
+        if (guard.owns_lock() == false && !repoPath.empty()) guard.lock();
+    }
 }
 
 GitResult RunGitGlobal(const std::vector<std::string>& args, int timeoutMs) {

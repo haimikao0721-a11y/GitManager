@@ -206,6 +206,10 @@ export const useAppStore = create<AppState>()((set, get) => {
   ): Promise<boolean> => {
     const path = requireRepo()
     if (!path) return false
+    if (get().loading.mutation) {
+      get().toast('info', '上一个 Git 操作还在进行，请稍候')
+      return false
+    }
     setLoading('mutation', true)
     try {
       await call(method, { path, ...params })
