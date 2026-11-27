@@ -101,6 +101,7 @@ export function WorkspacePage() {
   const [stashUntracked, setStashUntracked] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [diffTarget, setDiffTarget] = useState<{ file: StatusFile; mode: 'unstaged' | 'staged' } | null>(null)
+  const [stashDiff, setStashDiff] = useState<number | null>(null)
   const [accountId, setAccountId] = useState('')
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https')
 
@@ -741,6 +742,11 @@ export function WorkspacePage() {
                           <div className="text-[11px] text-[var(--faint)]">{stash.date}</div>
                         </div>
                         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <Tooltip content="查看内容">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setStashDiff(stash.index)}>
+                              <FileDiff className="h-3 w-3" />
+                            </Button>
+                          </Tooltip>
                           <Tooltip content="应用">
                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => stashAction('apply', stash.index)}>
                               <Play className="h-3 w-3" />
@@ -844,6 +850,18 @@ export function WorkspacePage() {
             ) : null}
           </div>
         ) : null}
+      </Dialog>
+
+      <Dialog
+        open={stashDiff !== null}
+        onOpenChange={(open) => {
+          if (!open) setStashDiff(null)
+        }}
+        title={stashDiff !== null ? `Stash · stash@{${stashDiff}}` : 'Stash'}
+        description="查看该 Stash 中缓存的改动。"
+        width="max-w-[min(1240px,96vw)]"
+      >
+        {stashDiff !== null ? <DiffView repoPath={repo.path} stash={stashDiff} /> : null}
       </Dialog>
 
       <Dialog

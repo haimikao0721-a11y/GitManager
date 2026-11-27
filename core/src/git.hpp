@@ -44,6 +44,7 @@ json RepoShowJson(const std::string& path, const std::string& hash);
 json ApplyPatchJson(const std::string& path, const std::string& patch, bool cached, bool reverse);
 json RepoBranchesJson(const std::string& path);
 json RepoStashesJson(const std::string& path);
+json RepoStashDiffJson(const std::string& path, int index);
 json RepoHistoryJson(const std::string& path, const std::string& filter, int limit);
 json SwitchRepoAccount(const std::string& path, const Account& account, const std::string& protocol);
 json RepoRemotesJson(const std::string& path);

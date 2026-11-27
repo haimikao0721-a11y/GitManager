@@ -817,6 +817,19 @@ json RepoStashesJson(const std::string& path) {
     return json{{"stashes", stashes}, {"count", stashes.size()}};
 }
 
+json RepoStashDiffJson(const std::string& path, int index) {
+    if (index < 0) throw std::runtime_error("无效的 Stash 序号。");
+    std::string ref = "stash@{" + std::to_string(index) + "}";
+    auto result = RunGit(path,
+                         {"stash", "show", "-p", "--include-untracked", "--no-ext-diff",
+                          "--no-color", "--unified=3", ref},
+                         false, 60000);
+    if (!result.ok) {
+        return json{{"diff", ""}, {"error", result.Text()}};
+    }
+    return json{{"diff", result.output}, {"ref", ref}};
+}
+
 json RepoHistoryJson(const std::string& path, const std::string& filter, int limit) {
     auto [current, upstream] = CurrentBranchAndUpstream(path);
     std::vector<std::string> revs;

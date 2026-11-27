@@ -11,6 +11,7 @@ interface DiffViewProps {
   repoPath: string
   file?: string
   commit?: string
+  stash?: number
   initialMode?: DiffMode
   unstagedAvailable?: boolean
   stagedAvailable?: boolean
@@ -70,6 +71,7 @@ export function DiffView({
   repoPath,
   file,
   commit,
+  stash,
   initialMode,
   unstagedAvailable = true,
   stagedAvailable = false,
@@ -85,23 +87,29 @@ export function DiffView({
   const [busyHunk, setBusyHunk] = useState('')
 
   useEffect(() => {
-    if (!commit) {
+    if (!commit && stash === undefined) {
       setMode(initialMode ?? (unstagedAvailable ? 'unstaged' : 'staged'))
     }
-  }, [file, commit, initialMode, unstagedAvailable])
+  }, [file, commit, stash, initialMode, unstagedAvailable])
 
   const load = useCallback(async () => {
     if (!repoPath) return
     setLoading(true)
     setError('')
     try {
-      const result = commit
-        ? await window.api.invoke<DiffResult>('repo.show', { path: repoPath, hash: commit })
-        : await window.api.invoke<DiffResult>('repo.diff', {
-            path: repoPath,
-            staged: mode === 'staged',
-            file: file ?? ''
-          })
+      const result =
+        stash !== undefined
+          ? await window.api.invoke<DiffResult>('repo.stash.diff', {
+              path: repoPath,
+              index: stash
+            })
+          : commit
+            ? await window.api.invoke<DiffResult>('repo.show', { path: repoPath, hash: commit })
+            : await window.api.invoke<DiffResult>('repo.diff', {
+                path: repoPath,
+                staged: mode === 'staged',
+                file: file ?? ''
+              })
       setDiff(result.diff ?? '')
       if (result.error) setError(result.error)
     } catch (cause) {
@@ -110,7 +118,7 @@ export function DiffView({
     } finally {
       setLoading(false)
     }
-  }, [commit, file, mode, repoPath])
+  }, [commit, file, mode, repoPath, stash])
 
   useEffect(() => {
     void load()
@@ -120,7 +128,7 @@ export function DiffView({
   const lines = useMemo(() => diff.split('\n').length, [diff])
 
   const stageHunk = async (section: DiffSection, hunk: DiffHunk) => {
-    if (!file || commit) return
+    if (!file || commit || stash !== undefined) return
     const key = `${section.header[0] ?? ''}:${hunk.header}`
     setBusyHunk(key)
     try {
@@ -146,17 +154,17 @@ export function DiffView({
 
   const binary = /Binary files .* differ/.test(diff)
   const tooLarge = lines > 5000
-  const canPatch = Boolean(file && !commit)
+  const canPatch = Boolean(file && !commit && stash === undefined)
 
   return (
     <div className="flex min-h-[320px] flex-col">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <FileDiff className="h-4 w-4 shrink-0 text-[var(--accent)]" />
-          <span className="code-font truncate text-xs text-[var(--text)]" title={file ?? commit}>
-            {file || `提交 ${commit?.slice(0, 12)}`}
+          <span className="code-font truncate text-xs text-[var(--text)]" title={file ?? commit ?? (stash !== undefined ? `stash@{${stash}}` : '')}>
+            {file || (stash !== undefined ? `stash@{${stash}}` : `提交 ${commit?.slice(0, 12)}`)}
           </span>
-          {!commit ? (
+          {!commit && stash === undefined ? (
             <div className="inline-flex h-7 items-center rounded-md border border-[var(--border)] bg-[var(--panel-soft)] p-0.5">
               <button
                 type="button"
@@ -209,8 +217,18 @@ export function DiffView({
       ) : !diff.trim() ? (
         <EmptyState
           icon={<FileDiff className="h-5 w-5" />}
-          title={mode === 'staged' ? '暂无已暂存改动' : '暂无未暂存改动'}
-          description="如果这是未跟踪文件，请先暂存后再查看差异。"
+          title={
+            stash !== undefined
+              ? '该 Stash 没有可显示的代码差异'
+              : mode === 'staged'
+                ? '暂无已暂存改动'
+                : '暂无未暂存改动'
+          }
+          description={
+            stash !== undefined
+              ? '可能只包含未跟踪文件，或暂存内容已与当前工作区一致。'
+              : '如果这是未跟踪文件，请先暂存后再查看差异。'
+          }
           className="flex-1"
         />
       ) : binary ? (

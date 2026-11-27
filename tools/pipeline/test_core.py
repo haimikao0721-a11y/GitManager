@@ -226,6 +226,10 @@ def main() -> int:
 
         stashes = core.rpc("repo.stashes", {"path": str(repo)})
         check(stashes["count"] >= 1, "stashes listed")
+        stash_diff = core.rpc(
+            "repo.stash.diff", {"path": str(repo), "index": stashes["stashes"][0]["index"]}
+        )
+        check("diff --git" in stash_diff["diff"], "stash diff shown")
 
         history = core.rpc("repo.history", {"path": str(repo), "filter": "current", "limit": 2000})
         check(history["count"] == len(history["rows"]), "history nodes equal commits")

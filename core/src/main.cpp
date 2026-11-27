@@ -239,6 +239,11 @@ json Dispatch(const std::string& method, const json& params) {
         EnsureRepo(path);
         return RepoStashesJson(path);
     }
+    if (method == "repo.stash.diff") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoStashDiffJson(path, I(params, "index", 0));
+    }
     if (method == "repo.history") {
         std::string path = S(params, "path");
         EnsureRepo(path);
