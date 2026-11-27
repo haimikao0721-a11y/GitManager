@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, ExternalLink, FileDiff, GitBranch, GitCommitHorizontal, RotateCcw } from 'lucide-react'
+import { Copy, FileDiff, GitBranch, RotateCcw } from 'lucide-react'
 import { useAppStore } from '@/store/app'
 import type { HistoryRow } from '@/types/api'
 import {
-  Button,
   Card,
   ContextMenu,
   Dialog,
   EmptyState,
   Select,
   Skeleton,
-  Tooltip,
   type ContextMenuItem
 } from '@/components/ui'
 import { DiffView } from '@/components/DiffView'
@@ -28,10 +26,13 @@ export function HistoryView() {
   const loading = useAppStore((state) => state.loading)
   const refreshHistory = useAppStore((state) => state.refreshHistory)
   const checkoutTarget = useAppStore((state) => state.checkoutTarget)
+  const selectedHash = useAppStore((state) => state.selectedCommitHash)
+  const setSelectedHash = useAppStore((state) => state.setSelectedCommitHash)
+  const setInspectorOpen = useAppStore((state) => state.setInspectorOpen)
+  const setInspectorTab = useAppStore((state) => state.setInspectorTab)
 
   const repo = repos.find((item) => item.path === selectedRepoPath)
   const rows = history?.rows ?? []
-  const [selectedHash, setSelectedHash] = useState('')
   const [diffHash, setDiffHash] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -45,13 +46,13 @@ export function HistoryView() {
 
   useEffect(() => {
     if (rows.length === 0) {
-      setSelectedHash('')
+      if (selectedHash) setSelectedHash('')
       return
     }
     if (!rows.some((row) => row.hash === selectedHash)) {
       setSelectedHash(rows[0].hash)
     }
-  }, [rows, selectedHash])
+  }, [rows, selectedHash, setSelectedHash])
 
   useEffect(() => {
     const element = scrollRef.current
@@ -68,7 +69,6 @@ export function HistoryView() {
     [rows]
   )
   const graphWidth = Math.min(220, Math.max(68, 24 + (maxLane + 1) * LANE_WIDTH))
-  const selectedRow = rows.find((row) => row.hash === selectedHash) ?? null
 
   const localBranches = branches.filter((branch) => branch.type === 'local')
   const remoteBranches = branches.filter((branch) => branch.type === 'remote')
@@ -86,8 +86,8 @@ export function HistoryView() {
   if (!repo) return null
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_312px]">
-      <Card className="flex min-h-[420px] flex-col xl:min-h-0">
+    <div className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
+      <Card className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2">
           <div className="flex items-center gap-3">
             <div className="w-[210px]">
@@ -165,6 +165,11 @@ export function HistoryView() {
                     )}
                     style={{ top: absoluteIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
                     onClick={() => setSelectedHash(row.hash)}
+                    onDoubleClick={() => {
+                      setSelectedHash(row.hash)
+                      setInspectorTab('changes')
+                      setInspectorOpen(true)
+                    }}
                     onContextMenu={(event) => {
                       event.preventDefault()
                       setSelectedHash(row.hash)
@@ -173,7 +178,16 @@ export function HistoryView() {
                         y: event.clientY,
                         items: [
                           {
-                            label: '查看改动',
+                            label: '在右侧栏查看变更',
+                            icon: <FileDiff className="h-3.5 w-3.5" />,
+                            onSelect: () => {
+                              setSelectedHash(row.hash)
+                              setInspectorTab('changes')
+                              setInspectorOpen(true)
+                            }
+                          },
+                          {
+                            label: '大窗查看全部改动',
                             icon: <FileDiff className="h-3.5 w-3.5" />,
                             onSelect: () => setDiffHash(row.hash)
                           },
@@ -224,14 +238,6 @@ export function HistoryView() {
         )}
       </Card>
 
-      <CommitDetails
-        row={selectedRow}
-        repo={repo}
-        onSelect={setSelectedHash}
-        onViewDiff={() => {
-          if (selectedRow) setDiffHash(selectedRow.hash)
-        }}
-      />
       <Dialog
         open={Boolean(diffHash)}
         onOpenChange={(open) => {
@@ -358,136 +364,5 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
         </span>
       ) : null}
     </>
-  )
-}
-
-function CommitDetails({
-  row,
-  repo,
-  onSelect,
-  onViewDiff
-}: {
-  row: HistoryRow | null
-  repo: { url: string; name: string; path: string }
-  onSelect: (hash: string) => void
-  onViewDiff: () => void
-}) {
-  const [copied, setCopied] = useState(false)
-
-  const webUrl = useMemo(() => {
-    if (!repo.url) return ''
-    return repo.url
-      .replace(/^git@([^:]+):/, 'https://$1/')
-      .replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
-      .replace(/\.git$/, '')
-  }, [repo.url])
-
-  const copy = async () => {
-    if (!row) return
-    await copyText(row.hash)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
-  return (
-    <Card className="flex min-h-[300px] flex-col xl:min-h-0">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-4 py-2.5">
-        <GitCommitHorizontal className="h-4 w-4 text-[var(--accent)]" />
-        <span className="text-[13px] font-semibold text-[var(--text-strong)]">提交详情</span>
-        {row ? (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={onViewDiff}>
-            <FileDiff className="h-3.5 w-3.5" /> 查看改动
-          </Button>
-        ) : null}
-      </div>
-      {!row ? (
-        <EmptyState
-          icon={<GitCommitHorizontal className="h-5 w-5" />}
-          title="选择一个提交"
-          className="flex-1"
-        />
-      ) : (
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-          <div>
-            <div className="mb-1 text-xs font-medium text-[var(--muted)]">提交说明</div>
-            <p className="text-[13px] font-medium leading-6 text-[var(--text-strong)]">
-              {row.subject || '(无提交说明)'}
-            </p>
-          </div>
-
-          <div>
-            <div className="mb-1 text-xs font-medium text-[var(--muted)]">哈希</div>
-            <div className="flex items-center gap-1.5">
-              <code className="code-font min-w-0 flex-1 truncate rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-1.5 text-xs text-[var(--text)]">
-                {row.hash}
-              </code>
-              <Tooltip content={copied ? '已复制' : '复制'}>
-                <Button size="icon" variant="ghost" onClick={copy}>
-                  {copied ? <Check className="h-3.5 w-3.5 text-[var(--success)]" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
-              </Tooltip>
-              {webUrl ? (
-                <Tooltip content="在 GitHub 打开">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => window.api.openExternal(`${webUrl}/commit/${row.hash}`)}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </Tooltip>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <Info label="作者" value={row.author || '-'} />
-            <Info label="日期" value={row.date || '-'} />
-          </div>
-
-          {parseDecorations(row.decorations).length > 0 ? (
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-[var(--muted)]">分支 / 标签</div>
-              <div className="flex flex-wrap gap-1">
-                <DecorationChips decorations={row.decorations} max={12} />
-              </div>
-            </div>
-          ) : null}
-
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-[var(--muted)]">
-              父提交 ({row.parents.length})
-            </div>
-            <div className="space-y-1">
-              {row.parents.length === 0 ? (
-                <div className="rounded-md border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--faint)]">
-                  根提交
-                </div>
-              ) : (
-                row.parents.map((parent) => (
-                  <button
-                    key={parent}
-                    onClick={() => onSelect(parent)}
-                    className="focus-ring flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-1.5 text-left transition-colors hover:border-[var(--border-strong)]"
-                  >
-                    <GitCommitHorizontal className="h-3.5 w-3.5 text-[var(--faint)]" />
-                    <span className="code-font truncate text-xs text-[var(--text)]">{parent}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-2">
-      <div className="text-[11px] text-[var(--faint)]">{label}</div>
-      <div className="mt-0.5 truncate text-xs text-[var(--text-strong)]">{value}</div>
-    </div>
   )
 }

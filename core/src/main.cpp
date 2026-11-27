@@ -211,7 +211,22 @@ json Dispatch(const std::string& method, const json& params) {
     if (method == "repo.show") {
         std::string path = S(params, "path");
         EnsureRepo(path);
-        return RepoShowJson(path, Trim(S(params, "hash")));
+        return RepoShowJson(path, Trim(S(params, "hash")), S(params, "file"));
+    }
+    if (method == "repo.commitDetails") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoCommitDetailsJson(path, Trim(S(params, "hash", "HEAD")));
+    }
+    if (method == "repo.tree") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoTreeJson(path, Trim(S(params, "ref", "HEAD")));
+    }
+    if (method == "repo.file") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoFileJson(path, Trim(S(params, "ref", "HEAD")), S(params, "file"));
     }
     if (method == "repo.patch") {
         std::string path = S(params, "path");

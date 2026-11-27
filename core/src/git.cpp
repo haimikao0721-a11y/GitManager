@@ -704,19 +704,311 @@ json RepoDiffJson(const std::string& path, bool staged, const std::string& file)
     return json{{"diff", result.output}};
 }
 
-json RepoShowJson(const std::string& path, const std::string& hash) {
-    static const std::regex hashPattern(R"(^[0-9a-fA-F]{4,40}$)");
+json RepoShowJson(const std::string& path, const std::string& hash, const std::string& file) {
+    static const std::regex hashPattern(R"(^(?:[0-9a-fA-F]{4,40}|HEAD)$)");
     if (!std::regex_match(hash, hashPattern)) {
         throw std::runtime_error("无效的提交哈希。");
     }
-    auto result = RunGit(path,
-                         {"show", "--no-ext-diff", "--no-color", "--unified=3",
-                          "--format=", hash, "--"},
-                         false, 120000);
+    std::vector<std::string> args = {"show", "--no-ext-diff", "--no-color", "--unified=3",
+                                     "--format=", hash, "--"};
+    if (!file.empty()) args.push_back(file);
+    auto result = RunGit(path, args, false, 120000);
     if (!result.ok) {
         return json{{"diff", ""}, {"error", result.Text()}};
     }
     return json{{"diff", result.output}};
+}
+
+namespace {
+
+std::string CommitStatusLabel(const std::string& status) {
+    if (status.empty()) return "变更";
+    switch (status[0]) {
+        case 'A': return "新增";
+        case 'M': return "修改";
+        case 'D': return "删除";
+        case 'R': return "重命名";
+        case 'C': return "复制";
+        case 'T': return "类型";
+        default: return status;
+    }
+}
+
+std::string TrimTrailingNewlines(std::string value) {
+    while (!value.empty() && (value.back() == '\n' || value.back() == '\r')) value.pop_back();
+    return value;
+}
+
+bool IsSafeRelativeRepoPath(const std::string& file) {
+    if (file.empty() || file.front() == '/' || file.front() == '\\') return false;
+    if (file.find('\0') != std::string::npos || file.find(':') != std::string::npos) return false;
+    std::string normalized = file;
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    size_t start = 0;
+    while (start <= normalized.size()) {
+        size_t slash = normalized.find('/', start);
+        std::string segment = slash == std::string::npos
+                                  ? normalized.substr(start)
+                                  : normalized.substr(start, slash - start);
+        if (segment == "..") return false;
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return true;
+}
+
+std::string SafeUtf8Prefix(const std::string& text, size_t maxBytes) {
+    if (text.size() <= maxBytes) return text;
+    size_t end = maxBytes;
+    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
+        --end;
+    }
+    return text.substr(0, end);
+}
+
+}  // namespace
+
+json RepoCommitDetailsJson(const std::string& path, const std::string& hash) {
+    static const std::regex hashPattern(R"(^(?:[0-9a-fA-F]{4,40}|HEAD)$)");
+    if (!std::regex_match(hash, hashPattern)) {
+        throw std::runtime_error("无效的提交哈希。");
+    }
+
+    if (hash == "HEAD") {
+        auto verify = RunGit(path, {"rev-parse", "--verify", "--quiet", "HEAD"}, false, 15000);
+        if (!verify.ok) {
+            return json{
+                {"empty", true},
+                {"hash", ""},
+                {"shortHash", ""},
+                {"author", ""},
+                {"email", ""},
+                {"date", ""},
+                {"subject", ""},
+                {"body", ""},
+                {"files", json::array()},
+                {"fileCount", 0},
+                {"totalAdditions", 0},
+                {"totalDeletions", 0},
+            };
+        }
+    }
+
+    auto meta = RunGit(path,
+                       {"show", "-s", "--date=short",
+                        "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%b", hash},
+                       false, 30000);
+    if (!meta.ok) {
+        return json{{"error", meta.Text()}, {"files", json::array()}, {"fileCount", 0}};
+    }
+    auto metaParts = Split(meta.output, '\x1f', 7);
+    std::string fullHash = metaParts.size() > 0 ? Trim(metaParts[0]) : hash;
+    std::string shortHash = metaParts.size() > 1 ? Trim(metaParts[1]) : hash;
+    std::string author = metaParts.size() > 2 ? Trim(metaParts[2]) : "";
+    std::string email = metaParts.size() > 3 ? Trim(metaParts[3]) : "";
+    std::string date = metaParts.size() > 4 ? Trim(metaParts[4]) : "";
+    std::string subject = metaParts.size() > 5 ? Trim(metaParts[5]) : "";
+    std::string body = metaParts.size() > 6 ? TrimTrailingNewlines(metaParts[6]) : "";
+
+    auto nameStatus = RunGit(path,
+                             {"diff-tree", "--no-commit-id", "-r", "--root", "--first-parent",
+                              "-M", "--name-status", hash, "--"},
+                             false, 30000);
+    auto numStat = RunGit(path,
+                          {"diff-tree", "--no-commit-id", "-r", "--root", "--first-parent",
+                           "-M", "--numstat", hash, "--"},
+                          false, 30000);
+
+    std::vector<std::pair<int, int>> stats;
+    std::vector<bool> binaries;
+    if (numStat.ok) {
+        for (const auto& line : SplitLines(numStat.output)) {
+            auto cols = Split(line, '\t', 3);
+            if (cols.size() < 2) continue;
+            bool isBin = cols[0] == "-" || cols[1] == "-";
+            int add = 0;
+            int del = 0;
+            if (!isBin) {
+                try {
+                    add = std::stoi(cols[0]);
+                    del = std::stoi(cols[1]);
+                } catch (...) {
+                }
+            }
+            stats.push_back({add, del});
+            binaries.push_back(isBin);
+        }
+    }
+
+    json files = json::array();
+    int totalAdditions = 0;
+    int totalDeletions = 0;
+    if (nameStatus.ok) {
+        auto statusLines = SplitLines(nameStatus.output);
+        for (size_t i = 0; i < statusLines.size(); ++i) {
+            auto cols = Split(statusLines[i], '\t', 3);
+            if (cols.size() < 2) continue;
+            std::string code = Trim(cols[0]);
+            std::string filePath = cols.size() >= 3 ? cols[2] : cols[1];
+            std::string oldPath = cols.size() >= 3 ? cols[1] : "";
+            int add = i < stats.size() ? stats[i].first : 0;
+            int del = i < stats.size() ? stats[i].second : 0;
+            bool isBin = i < binaries.size() ? binaries[i] : false;
+            totalAdditions += add;
+            totalDeletions += del;
+            files.push_back(json{
+                {"status", code},
+                {"label", CommitStatusLabel(code)},
+                {"path", filePath},
+                {"oldPath", oldPath},
+                {"additions", add},
+                {"deletions", del},
+                {"binary", isBin},
+            });
+        }
+    }
+
+    return json{
+        {"empty", false},
+        {"hash", fullHash},
+        {"shortHash", shortHash},
+        {"author", author},
+        {"email", email},
+        {"date", date},
+        {"subject", subject},
+        {"body", body},
+        {"files", files},
+        {"fileCount", files.size()},
+        {"totalAdditions", totalAdditions},
+        {"totalDeletions", totalDeletions},
+    };
+}
+
+json RepoTreeJson(const std::string& path, const std::string& ref) {
+    std::string target = ref.empty() ? "HEAD" : ref;
+    static const std::regex refPattern(R"(^(?:[0-9a-fA-F]{4,40}|HEAD)$)");
+    if (!std::regex_match(target, refPattern)) {
+        throw std::runtime_error("无效的树引用。");
+    }
+
+    if (target == "HEAD") {
+        auto verify = RunGit(path, {"rev-parse", "--verify", "--quiet", "HEAD"}, false, 15000);
+        if (!verify.ok) {
+            return json{
+                {"ref", target},
+                {"entries", json::array()},
+                {"fileCount", 0},
+                {"totalSize", 0},
+                {"truncated", false},
+            };
+        }
+    }
+
+    auto result = RunGit(path, {"ls-tree", "-r", "-l", "--full-tree", target}, false, 60000);
+    if (!result.ok) {
+        return json{
+            {"ref", target},
+            {"entries", json::array()},
+            {"fileCount", 0},
+            {"totalSize", 0},
+            {"truncated", false},
+            {"error", result.Text()},
+        };
+    }
+
+    constexpr size_t kMaxEntries = 15000;
+    json entries = json::array();
+    size_t totalFiles = 0;
+    long long totalSize = 0;
+    bool truncated = false;
+
+    for (const auto& line : SplitLines(result.output)) {
+        size_t tabPos = line.find('\t');
+        if (tabPos == std::string::npos) continue;
+        std::string meta = line.substr(0, tabPos);
+        std::string filePath = line.substr(tabPos + 1);
+        auto cols = SplitWhitespace(meta);
+        if (cols.size() < 4 || cols[1] != "blob") continue;
+        long long size = 0;
+        if (cols[3] != "-") {
+            try {
+                size = std::stoll(cols[3]);
+            } catch (...) {
+            }
+        }
+        ++totalFiles;
+        totalSize += size;
+        if (entries.size() < kMaxEntries) {
+            entries.push_back(json{{"path", filePath}, {"size", size}});
+        } else {
+            truncated = true;
+        }
+    }
+
+    return json{
+        {"ref", target},
+        {"entries", entries},
+        {"fileCount", totalFiles},
+        {"totalSize", totalSize},
+        {"truncated", truncated},
+    };
+}
+
+json RepoFileJson(const std::string& path, const std::string& ref, const std::string& file) {
+    std::string target = ref.empty() ? "HEAD" : ref;
+    static const std::regex refPattern(R"(^(?:[0-9a-fA-F]{4,40}|HEAD|WORKTREE)$)");
+    if (!std::regex_match(target, refPattern)) {
+        throw std::runtime_error("无效的文件版本引用。");
+    }
+    if (!IsSafeRelativeRepoPath(file)) {
+        throw std::runtime_error("无效的文件路径。");
+    }
+
+    constexpr size_t kMaxPreviewBytes = 262144;
+    if (target == "WORKTREE") {
+        fs::path full = PathFromUtf8(path) / PathFromUtf8(file);
+        std::error_code ec;
+        if (!fs::exists(full, ec) || fs::is_directory(full, ec)) {
+            return json{{"path", file}, {"ref", target}, {"content", ""}, {"error", "文件不存在或不是普通文件"}};
+        }
+        std::ifstream stream(full, std::ios::binary);
+        if (!stream) {
+            return json{{"path", file}, {"ref", target}, {"content", ""}, {"error", "无法读取文件"}};
+        }
+        std::string buffer(kMaxPreviewBytes + 1, '\0');
+        stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        size_t readBytes = static_cast<size_t>(stream.gcount());
+        buffer.resize(readBytes);
+        bool truncated = readBytes > kMaxPreviewBytes;
+        if (truncated) buffer.resize(kMaxPreviewBytes);
+        bool binary = buffer.find('\0') != std::string::npos;
+        uintmax_t fileSize = fs::file_size(full, ec);
+        return json{
+            {"path", file},
+            {"ref", target},
+            {"content", binary ? "" : SafeUtf8Prefix(buffer, kMaxPreviewBytes)},
+            {"binary", binary},
+            {"truncated", truncated},
+            {"size", ec ? readBytes : fileSize},
+        };
+    }
+
+    auto result = RunGit(path, {"show", target + ":" + file}, false, 30000);
+    if (!result.ok) {
+        return json{{"path", file}, {"ref", target}, {"content", ""}, {"error", result.Text()}};
+    }
+    size_t totalBytes = result.output.size();
+    bool binary = result.output.find('\0') != std::string::npos;
+    bool truncated = totalBytes > kMaxPreviewBytes;
+    std::string content = binary ? std::string{} : SafeUtf8Prefix(result.output, kMaxPreviewBytes);
+    return json{
+        {"path", file},
+        {"ref", target},
+        {"content", content},
+        {"binary", binary},
+        {"truncated", truncated},
+        {"size", totalBytes},
+    };
 }
 
 json ApplyPatchJson(const std::string& path, const std::string& patch, bool cached,

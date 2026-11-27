@@ -40,7 +40,10 @@ json RepoInfoJson(const std::string& path, const Config& config, bool includeSta
 json ScanRepos(const Config& config, const std::vector<std::string>& roots);
 json RepoStatusJson(const std::string& path);
 json RepoDiffJson(const std::string& path, bool staged, const std::string& file);
-json RepoShowJson(const std::string& path, const std::string& hash);
+json RepoShowJson(const std::string& path, const std::string& hash, const std::string& file = {});
+json RepoCommitDetailsJson(const std::string& path, const std::string& hash);
+json RepoTreeJson(const std::string& path, const std::string& ref);
+json RepoFileJson(const std::string& path, const std::string& ref, const std::string& file);
 json ApplyPatchJson(const std::string& path, const std::string& patch, bool cached, bool reverse);
 json RepoBranchesJson(const std::string& path);
 json RepoStashesJson(const std::string& path);

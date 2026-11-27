@@ -11,10 +11,12 @@ interface DiffViewProps {
   repoPath: string
   file?: string
   commit?: string
+  commitFile?: string
   stash?: number
   initialMode?: DiffMode
   unstagedAvailable?: boolean
   stagedAvailable?: boolean
+  className?: string
   onChanged?: () => void | Promise<void>
   onClose?: () => void
 }
@@ -71,10 +73,12 @@ export function DiffView({
   repoPath,
   file,
   commit,
+  commitFile,
   stash,
   initialMode,
   unstagedAvailable = true,
   stagedAvailable = false,
+  className,
   onChanged
 }: DiffViewProps) {
   const toast = useAppStore((state) => state.toast)
@@ -104,7 +108,11 @@ export function DiffView({
               index: stash
             })
           : commit
-            ? await window.api.invoke<DiffResult>('repo.show', { path: repoPath, hash: commit })
+            ? await window.api.invoke<DiffResult>('repo.show', {
+                path: repoPath,
+                hash: commit,
+                file: commitFile ?? ''
+              })
             : await window.api.invoke<DiffResult>('repo.diff', {
                 path: repoPath,
                 staged: mode === 'staged',
@@ -118,7 +126,7 @@ export function DiffView({
     } finally {
       setLoading(false)
     }
-  }, [commit, file, mode, repoPath, stash])
+  }, [commit, commitFile, file, mode, repoPath, stash])
 
   useEffect(() => {
     void load()
@@ -157,12 +165,15 @@ export function DiffView({
   const canPatch = Boolean(file && !commit && stash === undefined)
 
   return (
-    <div className="flex min-h-[320px] flex-col">
+    <div className={cn('flex min-h-[320px] flex-col', className)}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <FileDiff className="h-4 w-4 shrink-0 text-[var(--accent)]" />
-          <span className="code-font truncate text-xs text-[var(--text)]" title={file ?? commit ?? (stash !== undefined ? `stash@{${stash}}` : '')}>
-            {file || (stash !== undefined ? `stash@{${stash}}` : `提交 ${commit?.slice(0, 12)}`)}
+          <span
+            className="code-font truncate text-xs text-[var(--text)]"
+            title={commitFile || file || commit || (stash !== undefined ? `stash@{${stash}}` : '')}
+          >
+            {commitFile || file || (stash !== undefined ? `stash@{${stash}}` : `提交 ${commit?.slice(0, 12)}`)}
           </span>
           {!commit && stash === undefined ? (
             <div className="inline-flex h-7 items-center rounded-md border border-[var(--border)] bg-[var(--panel-soft)] p-0.5">
