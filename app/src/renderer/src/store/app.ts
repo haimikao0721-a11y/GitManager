@@ -76,6 +76,7 @@ interface AppState {
   repos: RepoInfo[]
   selectedRepoPath: string
   activePage: PageId
+  sidebarCollapsed: boolean
   workspaceTab: WorkspaceTab
   historyFilter: string
   inspectorOpen: boolean
@@ -101,6 +102,8 @@ interface AppState {
 
   bootstrap: () => Promise<void>
   setActivePage: (page: PageId) => void
+  setSidebarCollapsed: (collapsed: boolean) => void
+  toggleSidebar: () => void
   setWorkspaceTab: (tab: WorkspaceTab) => void
   setInspectorOpen: (open: boolean) => void
   toggleInspector: () => void
@@ -273,7 +276,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     version: '0.0.2',
     repos: [],
     selectedRepoPath: '',
-    activePage: 'accounts',
+    activePage: 'repos',
+    sidebarCollapsed: false,
     workspaceTab: 'changes',
     historyFilter: 'all',
     inspectorOpen: true,
@@ -333,6 +337,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     setActivePage: (page) => set({ activePage: page }),
+    setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+    toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
     setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
     setInspectorOpen: (open) => set({ inspectorOpen: open }),
     toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),

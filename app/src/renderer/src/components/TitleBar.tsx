@@ -1,4 +1,12 @@
-import { ChevronDown, FolderGit2, LogOut, RefreshCw, Search } from 'lucide-react'
+import {
+  ChevronDown,
+  FolderGit2,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+  Search
+} from 'lucide-react'
 import { useAppStore } from '@/store/app'
 import { Button, Kbd, Tooltip } from '@/components/ui'
 
@@ -7,13 +15,27 @@ export function TitleBar() {
   const repos = useAppStore((state) => state.repos)
   const selectRepo = useAppStore((state) => state.selectRepo)
   const status = useAppStore((state) => state.status)
+  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed)
+  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
   const setPaletteOpen = useAppStore((state) => state.setPaletteOpen)
   const scanRepos = useAppStore((state) => state.scanRepos)
   const loading = useAppStore((state) => state.loading)
   const repo = repos.find((item) => item.path === selectedRepoPath)
 
   return (
-    <header className="titlebar-drag relative z-40 flex h-10 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3.5">
+    <header className="titlebar-drag relative z-40 flex h-10 shrink-0 items-center gap-2.5 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-2.5">
+      <Tooltip content={sidebarCollapsed ? '展开左侧栏 (Ctrl+B)' : '收起左侧栏 (Ctrl+B)'} side="bottom">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={sidebarCollapsed ? '展开左侧栏' : '收起左侧栏'}
+          className="titlebar-no-drag h-7 w-7 shrink-0 text-[var(--muted)] hover:text-[var(--text-strong)]"
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </Button>
+      </Tooltip>
+
       {repos.length > 0 ? (
         <div className="titlebar-no-drag relative flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[var(--border-strong)]">
           <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--faint)]" />
