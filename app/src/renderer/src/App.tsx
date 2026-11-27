@@ -72,7 +72,6 @@ export default function App() {
   const bootError = useAppStore((state) => state.bootError)
   const activePage = useAppStore((state) => state.activePage)
   const setActivePage = useAppStore((state) => state.setActivePage)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
   const paletteOpen = useAppStore((state) => state.paletteOpen)
   const setPaletteOpen = useAppStore((state) => state.setPaletteOpen)
   const bootstrap = useAppStore((state) => state.bootstrap)
@@ -96,9 +95,9 @@ export default function App() {
   useEffect(() => {
     if (activePage === 'workspace' && selectedRepoPath) {
       refreshRepo()
-      if (workspaceTab === 'history') refreshHistory()
+      refreshHistory()
     }
-  }, [activePage, refreshHistory, refreshRepo, selectedRepoPath, workspaceTab])
+  }, [activePage, refreshHistory, refreshRepo, selectedRepoPath])
 
   useEffect(() => {
     let timer = 0
@@ -108,7 +107,7 @@ export default function App() {
         const state = useAppStore.getState()
         if (state.activePage !== 'workspace' || !state.selectedRepoPath) return
         if (state.loading.mutation) return
-        void state.refreshRepo({ history: state.workspaceTab === 'history' })
+        void state.refreshRepo({ history: true })
       }, 450)
     }
     const onVisibility = () => {

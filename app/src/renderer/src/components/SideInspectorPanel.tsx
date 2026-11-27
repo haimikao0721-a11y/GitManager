@@ -125,7 +125,8 @@ export function SideInspectorPanel({
 }: SideInspectorPanelProps) {
   const repos = useAppStore((state) => state.repos)
   const selectedRepoPath = useAppStore((state) => state.selectedRepoPath)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
+  const inspectorFocus = useAppStore((state) => state.inspectorFocus)
+  const setInspectorFocus = useAppStore((state) => state.setInspectorFocus)
   const status = useAppStore((state) => state.status)
   const stashes = useAppStore((state) => state.stashes)
   const history = useAppStore((state) => state.history)
@@ -144,12 +145,12 @@ export function SideInspectorPanel({
   const refreshRepo = useAppStore((state) => state.refreshRepo)
 
   const repo = repos.find((item) => item.path === selectedRepoPath)
-  const isHistoryMode = workspaceTab === 'history'
   const rows = history?.rows ?? []
   const selectedHistoryRow: HistoryRow | null = useMemo(() => {
-    if (!isHistoryMode || rows.length === 0) return null
+    if (rows.length === 0) return null
     return rows.find((row) => row.hash === selectedCommitHash) ?? rows[0] ?? null
-  }, [isHistoryMode, rows, selectedCommitHash])
+  }, [rows, selectedCommitHash])
+  const isHistoryMode = inspectorFocus === 'commit'
 
   const targetRef = isHistoryMode ? selectedHistoryRow?.hash || 'HEAD' : 'HEAD'
 
@@ -286,7 +287,7 @@ export function SideInspectorPanel({
 
   if (!repo) return null
 
-  const isExpanded = inspectorWidth >= 560
+  const isExpanded = inspectorWidth >= 520
   const headerHash = selectedHistoryRow?.hash || details?.shortHash || ''
   const headerAuthor = selectedHistoryRow?.author || details?.author || ''
   const headerDate = selectedHistoryRow?.date || details?.date || ''
@@ -301,8 +302,8 @@ export function SideInspectorPanel({
 
   return (
     <aside
-      style={{ width: inspectorWidth }}
-      className="relative flex h-full shrink-0 flex-col border-l border-[var(--border)] bg-[var(--panel-solid)]"
+      style={{ width: `min(${inspectorWidth}px, 46vw)` }}
+      className="relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--panel-solid)]"
     >
       <div
         role="separator"
@@ -321,6 +322,32 @@ export function SideInspectorPanel({
 
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[var(--border)] bg-[var(--panel-soft)]/70 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
+          <div className="mb-1.5 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--panel)] p-0.5 text-[10px]">
+            <button
+              type="button"
+              onClick={() => setInspectorFocus('working')}
+              className={cn(
+                'focus-ring rounded px-2 py-0.5 font-medium transition-colors',
+                !isHistoryMode
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              )}
+            >
+              工作区{workingFiles.length > 0 ? ` (${workingFiles.length})` : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInspectorFocus('commit')}
+              className={cn(
+                'focus-ring rounded px-2 py-0.5 font-medium transition-colors',
+                isHistoryMode
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              )}
+            >
+              提交 {selectedHistoryRow?.hash || ''}
+            </button>
+          </div>
           {isHistoryMode ? (
             selectedHistoryRow ? (
               <>
@@ -382,7 +409,7 @@ export function SideInspectorPanel({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => setInspectorWidth(isExpanded ? 440 : 640)}
+              onClick={() => setInspectorWidth(isExpanded ? 380 : 580)}
             >
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
@@ -561,7 +588,7 @@ function CommitTab({
   }
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-4">
+    <div className="h-full min-w-0 space-y-4 overflow-y-auto overflow-x-hidden p-4">
       {!isHistoryMode ? (
         <div className="rounded-md border border-[var(--border)] bg-[var(--panel-soft)] p-3">
           <div className="flex items-center justify-between gap-2">
@@ -611,7 +638,7 @@ function CommitTab({
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">
               {isHistoryMode ? '提交说明' : '最新 HEAD 提交'}
             </div>
-            <div className="text-[13px] font-semibold leading-6 text-[var(--text-strong)]">
+            <div className="break-words text-[13px] font-semibold leading-6 text-[var(--text-strong)]">
               {details?.subject || row?.subject || '(无提交说明)'}
             </div>
             {details?.body ? (

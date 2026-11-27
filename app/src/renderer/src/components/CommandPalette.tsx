@@ -29,10 +29,8 @@ export function CommandPalette() {
   const setOpen = useAppStore((state) => state.setPaletteOpen)
   const setActivePage = useAppStore((state) => state.setActivePage)
   const setWorkspaceTab = useAppStore((state) => state.setWorkspaceTab)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
   const scanRepos = useAppStore((state) => state.scanRepos)
   const refreshRepo = useAppStore((state) => state.refreshRepo)
-  const refreshHistory = useAppStore((state) => state.refreshHistory)
   const fetchRepo = useAppStore((state) => state.fetchRepo)
   const updateSettings = useAppStore((state) => state.updateSettings)
   const config = useAppStore((state) => state.config)
@@ -96,8 +94,7 @@ export function CommandPalette() {
         label: '刷新当前数据',
         icon: RefreshCw,
         run: () => {
-          if (activePage === 'workspace' && workspaceTab === 'history') refreshHistory()
-          else refreshRepo({ history: false })
+          refreshRepo({ history: activePage === 'workspace' })
           setOpen(false)
         }
       },
@@ -137,16 +134,14 @@ export function CommandPalette() {
     activePage,
     config?.settings.theme,
     fetchRepo,
-    refreshHistory,
     refreshRepo,
-    repos,
     scanRepos,
     selectRepo,
     setActivePage,
     setWorkspaceTab,
     setOpen,
     updateSettings,
-    workspaceTab
+    repos
   ])
 
   const filtered = useMemo(() => {

@@ -1,6 +1,7 @@
 export type Theme = 'dark' | 'light' | 'sepia'
 export type PageId = 'accounts' | 'repos' | 'workspace' | 'settings'
 export type WorkspaceTab = 'changes' | 'history'
+export type InspectorFocus = 'working' | 'commit'
 export type InspectorTab = 'commit' | 'changes' | 'tree'
 export type AuthType = 'https' | 'ssh'
 

@@ -8,6 +8,7 @@ import type {
   GitHubUser,
   GitProxyState,
   HistoryResult,
+  InspectorFocus,
   InspectorTab,
   PageId,
   RepoInfo,
@@ -79,6 +80,7 @@ interface AppState {
   workspaceTab: WorkspaceTab
   historyFilter: string
   inspectorOpen: boolean
+  inspectorFocus: InspectorFocus
   inspectorTab: InspectorTab
   inspectorWidth: number
   selectedCommitHash: string
@@ -104,6 +106,7 @@ interface AppState {
   setWorkspaceTab: (tab: WorkspaceTab) => void
   setInspectorOpen: (open: boolean) => void
   toggleInspector: () => void
+  setInspectorFocus: (focus: InspectorFocus) => void
   setInspectorTab: (tab: InspectorTab) => void
   setInspectorWidth: (width: number) => void
   setSelectedCommitHash: (hash: string) => void
@@ -277,8 +280,9 @@ export const useAppStore = create<AppState>()((set, get) => {
     workspaceTab: 'changes',
     historyFilter: 'all',
     inspectorOpen: true,
+    inspectorFocus: 'commit',
     inspectorTab: 'commit',
-    inspectorWidth: 440,
+    inspectorWidth: 380,
     selectedCommitHash: '',
     selectedCommitFile: '',
     selectedWorkFile: null,
@@ -333,12 +337,17 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     setActivePage: (page) => set({ activePage: page }),
-    setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+    setWorkspaceTab: (tab) =>
+      set({
+        workspaceTab: tab,
+        inspectorFocus: tab === 'changes' ? 'working' : 'commit'
+      }),
     setInspectorOpen: (open) => set({ inspectorOpen: open }),
     toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),
+    setInspectorFocus: (focus) => set({ inspectorFocus: focus }),
     setInspectorTab: (tab) => set({ inspectorTab: tab }),
     setInspectorWidth: (width) =>
-      set({ inspectorWidth: Math.max(320, Math.min(760, Math.round(width))) }),
+      set({ inspectorWidth: Math.max(300, Math.min(720, Math.round(width))) }),
     setSelectedCommitHash: (hash) => set({ selectedCommitHash: hash, selectedCommitFile: '' }),
     setSelectedCommitFile: (file) => set({ selectedCommitFile: file }),
     setSelectedWorkFile: (file) => set({ selectedWorkFile: file }),
@@ -459,7 +468,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         pendingMutation: null
       })
       await get().refreshRepo({
-        history: get().activePage === 'workspace' && get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
@@ -602,7 +611,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         await call('repo.fetch', { path })
         get().toast('success', '远程分支已更新')
         await get().refreshRepo()
-        if (get().activePage === 'workspace' && get().workspaceTab === 'history') {
+        if (get().activePage === 'workspace') {
           await get().refreshHistory()
         }
       } catch (error) {
@@ -617,7 +626,9 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     pushRepo: async () => {
-      await runRepoMutation('repo.push', {}, '推送完成')
+      await runRepoMutation('repo.push', {}, '推送完成', {
+        history: get().activePage === 'workspace'
+      })
     },
 
     stageFiles: async (paths) => {
@@ -634,7 +645,7 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     commit: async (message, amend = false) => {
       return runRepoMutation('repo.commit', { message, amend }, '提交成功', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
@@ -648,25 +659,25 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     createBranch: async (name, base, switchTo) => {
       return runRepoMutation('repo.branch.create', { name, base, switch: switchTo }, '分支已创建', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     switchBranch: async (name) => {
       return runRepoMutation('repo.branch.switch', { name }, '分支已切换', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     deleteBranch: async (name, force) => {
       return runRepoMutation('repo.branch.delete', { name, force }, '分支已删除', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     checkoutTarget: async (target) => {
       return runRepoMutation('repo.checkout', { target }, `已签出到 ${target}`, {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 

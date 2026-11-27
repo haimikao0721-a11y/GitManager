@@ -15,7 +15,7 @@ import { DiffView } from '@/components/DiffView'
 import { cn, copyText, graphColor, parseDecorations } from '@/lib/utils'
 
 const ROW_HEIGHT = 44
-const LANE_WIDTH = 16
+const LANE_WIDTH = 14
 
 export function HistoryView() {
   const repos = useAppStore((state) => state.repos)
@@ -28,6 +28,7 @@ export function HistoryView() {
   const checkoutTarget = useAppStore((state) => state.checkoutTarget)
   const selectedHash = useAppStore((state) => state.selectedCommitHash)
   const setSelectedHash = useAppStore((state) => state.setSelectedCommitHash)
+  const setInspectorFocus = useAppStore((state) => state.setInspectorFocus)
   const setInspectorOpen = useAppStore((state) => state.setInspectorOpen)
   const setInspectorTab = useAppStore((state) => state.setInspectorTab)
 
@@ -35,9 +36,11 @@ export function HistoryView() {
   const rows = history?.rows ?? []
   const [diffHash, setDiffHash] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(620)
+  const [containerWidth, setContainerWidth] = useState(520)
 
   useEffect(() => {
     if (!selectedRepoPath) return
@@ -55,20 +58,36 @@ export function HistoryView() {
   }, [rows, selectedHash, setSelectedHash])
 
   useEffect(() => {
-    const element = scrollRef.current
-    if (!element) return
-    const update = () => setViewport(element.clientHeight)
+    const card = cardRef.current
+    if (!card) return
+    const update = () => {
+      setContainerWidth(card.clientWidth)
+      if (scrollRef.current) setViewport(scrollRef.current.clientHeight)
+    }
     update()
     const observer = new ResizeObserver(update)
-    observer.observe(element)
+    observer.observe(card)
+    if (scrollRef.current) observer.observe(scrollRef.current)
     return () => observer.disconnect()
-  }, [])
+  }, [rows.length, loading.history])
 
   const maxLane = useMemo(
     () => rows.reduce((max, row) => Math.max(max, row.maxLane), 0),
     [rows]
   )
-  const graphWidth = Math.min(340, Math.max(80, 28 + (maxLane + 1) * LANE_WIDTH))
+  const graphWidth = Math.min(260, Math.max(48, 20 + (maxLane + 1) * LANE_WIDTH))
+  const showAuthor = containerWidth >= 840
+  const showTagsCol = containerWidth >= 680
+  const showDateCol = containerWidth >= 360
+  const tagsWidth = containerWidth >= 780 ? 196 : 156
+  const gridColumns = [
+    `${graphWidth}px`,
+    'minmax(0,1fr)',
+    ...(showTagsCol ? [`${tagsWidth}px`] : []),
+    ...(showAuthor ? ['88px'] : []),
+    ...(showDateCol ? ['74px'] : [])
+  ].join(' ')
+  const tagMax = containerWidth >= 780 ? 2 : 1
 
   const localBranches = branches.filter((branch) => branch.type === 'local')
   const remoteBranches = branches.filter((branch) => branch.type === 'remote')
@@ -86,11 +105,11 @@ export function HistoryView() {
   if (!repo) return null
 
   return (
-    <div className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
-      <Card className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
+    <div ref={cardRef} className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
+      <Card className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2">
           <div className="flex items-center gap-3">
-            <div className="w-[210px]">
+            <div className="w-[168px]">
               <Select value={historyFilter} onChange={(event) => selectFilter(event.target.value)} className="h-8 text-xs">
                 <option value="all">全部分支与标签</option>
                 <option value="current">当前分支（含上游）</option>
@@ -124,14 +143,14 @@ export function HistoryView() {
         </div>
 
         <div
-          className="grid shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 py-2 text-xs font-medium text-[var(--faint)]"
-          style={{ gridTemplateColumns: `${graphWidth}px minmax(0,1fr) 240px 96px 88px` }}
+          className="grid shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-3.5 py-2 text-xs font-medium text-[var(--faint)]"
+          style={{ gridTemplateColumns: gridColumns }}
         >
-          <span>图形</span>
-          <span>提交</span>
-          <span className="hidden xl:block">分支 / 标签</span>
-          <span className="hidden xl:block">作者</span>
-          <span className="text-right">日期</span>
+          <span className="whitespace-nowrap">图形</span>
+          <span className="whitespace-nowrap">提交</span>
+          {showTagsCol ? <span className="whitespace-nowrap">分支 / 标签</span> : null}
+          {showAuthor ? <span className="whitespace-nowrap">作者</span> : null}
+          {showDateCol ? <span className="whitespace-nowrap text-right">日期</span> : null}
         </div>
 
         {loading.history && rows.length === 0 ? (
@@ -145,7 +164,7 @@ export function HistoryView() {
         ) : (
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto"
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
             <div className="relative" style={{ height: rows.length * ROW_HEIGHT }}>
@@ -164,15 +183,20 @@ export function HistoryView() {
                           : 'hover:bg-[var(--panel-soft)]'
                     )}
                     style={{ top: absoluteIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
-                    onClick={() => setSelectedHash(row.hash)}
+                    onClick={() => {
+                      setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
+                    }}
                     onDoubleClick={() => {
                       setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
                       setInspectorTab('changes')
                       setInspectorOpen(true)
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault()
                       setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
                       setMenu({
                         x: event.clientX,
                         y: event.clientY,
@@ -182,6 +206,7 @@ export function HistoryView() {
                             icon: <FileDiff className="h-3.5 w-3.5" />,
                             onSelect: () => {
                               setSelectedHash(row.hash)
+                              setInspectorFocus('commit')
                               setInspectorTab('changes')
                               setInspectorOpen(true)
                             }
@@ -206,29 +231,46 @@ export function HistoryView() {
                     }}
                   >
                     <div
-                      className="grid h-full items-center gap-3 px-4"
-                      style={{
-                        gridTemplateColumns: `${graphWidth}px minmax(0,1fr) 240px 96px 88px`
-                      }}
+                      className="grid h-full items-center gap-2.5 px-3.5"
+                      style={{ gridTemplateColumns: gridColumns }}
                     >
                       <div className="relative h-full">
                         <GraphCell row={row} width={graphWidth} height={ROW_HEIGHT} selected={selected} />
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-[var(--text-strong)]" title={row.subject}>
-                          {row.subject || '(无提交说明)'}
+                      <div className="min-w-0 overflow-hidden">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--text-strong)]" title={row.subject}>
+                            {row.subject || '(无提交说明)'}
+                          </div>
+                          {!showTagsCol && row.decorations ? (
+                            <div className="flex max-w-[46%] shrink-0 flex-nowrap items-center gap-1 overflow-hidden">
+                              <DecorationChips decorations={row.decorations} max={1} compact />
+                            </div>
+                          ) : null}
                         </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
-                          <span className="code-font">{row.hash}</span>
+                        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-[var(--faint)]">
+                          <span className="code-font shrink-0">{row.hash}</span>
                           <span>·</span>
-                          <span className="truncate">{row.author}</span>
+                          <span className="min-w-0 truncate">{row.author}</span>
+                          {!showDateCol ? (
+                            <>
+                              <span>·</span>
+                              <span className="shrink-0 tabular-nums">{row.date}</span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
-                      <div className="hidden min-w-0 flex-wrap items-center gap-1 xl:flex">
-                        <DecorationChips decorations={row.decorations} max={4} />
-                      </div>
-                      <div className="hidden truncate text-xs text-[var(--muted)] xl:block">{row.author}</div>
-                      <div className="text-right text-[11px] tabular-nums text-[var(--faint)]">{row.date}</div>
+                      {showTagsCol ? (
+                        <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+                          <DecorationChips decorations={row.decorations} max={tagMax} compact={containerWidth < 700} />
+                        </div>
+                      ) : null}
+                      {showAuthor ? (
+                        <div className="truncate text-xs text-[var(--muted)]">{row.author}</div>
+                      ) : null}
+                      {showDateCol ? (
+                        <div className="text-right text-[11px] tabular-nums text-[var(--faint)]">{row.date}</div>
+                      ) : null}
                     </div>
                   </div>
                 )
@@ -266,7 +308,7 @@ function GraphCell({
   selected: boolean
 }) {
   const mid = height / 2
-  const x = (lane: number) => 14 + lane * LANE_WIDTH
+  const x = (lane: number) => 12 + lane * LANE_WIDTH
   const nodeX = x(row.lane)
   const nodeColor = graphColor(row.color)
   const chips = parseDecorations(row.decorations)
@@ -372,7 +414,15 @@ function GraphCell({
   )
 }
 
-function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: number }) {
+function DecorationChips({
+  decorations,
+  max = 4,
+  compact = false
+}: {
+  decorations: string
+  max?: number
+  compact?: boolean
+}) {
   const chips = parseDecorations(decorations)
   if (chips.length === 0) return null
   const visible = chips.slice(0, max)
@@ -384,7 +434,8 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
         <span
           key={`${chip.text}-${index}`}
           className={cn(
-            'max-w-[128px] truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
+            'shrink-0 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
+            compact ? 'max-w-[96px]' : 'max-w-[128px]',
             chip.kind === 'head' && 'border-transparent bg-[var(--text-strong)] text-[var(--bg)]',
             chip.kind === 'tag' && 'border-[var(--warning-border)] bg-[var(--warning-soft)] text-[var(--warning)]',
             chip.kind === 'remote' && 'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]',
@@ -397,7 +448,7 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
       ))}
       {more > 0 ? (
         <span
-          className="rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]"
+          className="shrink-0 rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]"
           title={hidden.map((chip) => chip.text).join('\n')}
         >
           +{more}
