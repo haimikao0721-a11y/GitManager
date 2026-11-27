@@ -17,7 +17,7 @@ import { DiffView } from '@/components/DiffView'
 import { cn, copyText, graphColor, parseDecorations } from '@/lib/utils'
 
 const ROW_HEIGHT = 44
-const LANE_WIDTH = 14
+const LANE_WIDTH = 16
 
 export function HistoryView() {
   const repos = useAppStore((state) => state.repos)
@@ -67,7 +67,7 @@ export function HistoryView() {
     () => rows.reduce((max, row) => Math.max(max, row.maxLane), 0),
     [rows]
   )
-  const graphWidth = Math.min(220, Math.max(68, 24 + (maxLane + 1) * LANE_WIDTH))
+  const graphWidth = Math.min(340, Math.max(80, 28 + (maxLane + 1) * LANE_WIDTH))
   const selectedRow = rows.find((row) => row.hash === selectedHash) ?? null
 
   const localBranches = branches.filter((branch) => branch.type === 'local')
@@ -92,8 +92,8 @@ export function HistoryView() {
           <div className="flex items-center gap-3">
             <div className="w-[210px]">
               <Select value={historyFilter} onChange={(event) => selectFilter(event.target.value)} className="h-8 text-xs">
-                <option value="current">当前分支（含上游）</option>
                 <option value="all">全部分支与标签</option>
+                <option value="current">当前分支（含上游）</option>
                 {localBranches.length > 0 ? (
                   <optgroup label="本地分支">
                     {localBranches.map((branch) => (
@@ -211,7 +211,7 @@ export function HistoryView() {
                         </div>
                       </div>
                       <div className="hidden min-w-0 flex-wrap items-center gap-1 xl:flex">
-                        <DecorationChips decorations={row.decorations} max={3} />
+                        <DecorationChips decorations={row.decorations} max={4} />
                       </div>
                       <div className="hidden truncate text-xs text-[var(--muted)] xl:block">{row.author}</div>
                       <div className="text-right text-[11px] tabular-nums text-[var(--faint)]">{row.date}</div>
@@ -260,9 +260,13 @@ function GraphCell({
   selected: boolean
 }) {
   const mid = height / 2
-  const x = (lane: number) => 12 + lane * LANE_WIDTH
+  const x = (lane: number) => 14 + lane * LANE_WIDTH
   const nodeX = x(row.lane)
   const nodeColor = graphColor(row.color)
+  const chips = parseDecorations(row.decorations)
+  const isHead = chips.some((chip) => chip.kind === 'head') || row.decorations.includes('HEAD')
+  const isMerge = row.parents.length > 1
+  const isBranchTip = !row.nodeFromTop && row.nodeToBottom && !isHead
 
   return (
     <svg width={width} height={height} className="overflow-visible">
@@ -275,21 +279,22 @@ function GraphCell({
           y2={height}
           stroke={graphColor(ref.color)}
           strokeWidth={2}
-          strokeLinecap="round"
+          strokeLinecap="butt"
         />
       ))}
-      {row.incoming.map((ref, index) => (
-        <line
-          key={`i-${index}`}
-          x1={x(ref.lane)}
-          y1={0}
-          x2={nodeX}
-          y2={mid}
-          stroke={graphColor(ref.color)}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      ))}
+      {row.incoming.map((ref, index) => {
+        const x1 = x(ref.lane)
+        return (
+          <path
+            key={`i-${index}`}
+            d={`M ${x1} 0 C ${x1} ${mid * 0.65}, ${nodeX} ${mid * 0.35}, ${nodeX} ${mid}`}
+            fill="none"
+            stroke={graphColor(ref.color)}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        )
+      })}
       {row.nodeFromTop ? (
         <line
           x1={nodeX}
@@ -298,7 +303,7 @@ function GraphCell({
           y2={mid}
           stroke={nodeColor}
           strokeWidth={2.2}
-          strokeLinecap="round"
+          strokeLinecap="butt"
         />
       ) : null}
       {row.nodeToBottom ? (
@@ -309,23 +314,54 @@ function GraphCell({
           y2={height}
           stroke={nodeColor}
           strokeWidth={2.2}
-          strokeLinecap="round"
+          strokeLinecap="butt"
         />
       ) : null}
-      {row.outgoing.map((ref, index) => (
-        <line
-          key={`o-${index}`}
-          x1={nodeX}
-          y1={mid}
-          x2={x(ref.lane)}
-          y2={height}
-          stroke={graphColor(ref.color)}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      ))}
-      {selected ? <circle cx={nodeX} cy={mid} r={8.5} fill={nodeColor} opacity={0.2} /> : null}
-      <circle cx={nodeX} cy={mid} r={4.8} fill={nodeColor} stroke="var(--panel)" strokeWidth={2} />
+      {row.outgoing.map((ref, index) => {
+        const x2 = x(ref.lane)
+        return (
+          <path
+            key={`o-${index}`}
+            d={`M ${nodeX} ${mid} C ${nodeX} ${mid + (height - mid) * 0.35}, ${x2} ${mid + (height - mid) * 0.65}, ${x2} ${height}`}
+            fill="none"
+            stroke={graphColor(ref.color)}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        )
+      })}
+      {selected ? <circle cx={nodeX} cy={mid} r={9.5} fill={nodeColor} opacity={0.18} /> : null}
+      <circle
+        cx={nodeX}
+        cy={mid}
+        r={isHead || isBranchTip || isMerge ? 6.8 : 5.4}
+        fill="var(--panel)"
+      />
+      {isHead ? (
+        <>
+          <circle cx={nodeX} cy={mid} r={7.8} fill="none" stroke={nodeColor} strokeWidth={1.5} opacity={0.45} />
+          <circle cx={nodeX} cy={mid} r={5} fill={nodeColor} />
+        </>
+      ) : isBranchTip ? (
+        <>
+          <circle cx={nodeX} cy={mid} r={5.4} fill="var(--panel)" stroke={nodeColor} strokeWidth={2.4} />
+          <path
+            d={`M ${nodeX - 2.3} ${mid - 1} L ${nodeX} ${mid + 1.6} L ${nodeX + 2.3} ${mid - 1}`}
+            fill="none"
+            stroke={nodeColor}
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      ) : isMerge ? (
+        <>
+          <circle cx={nodeX} cy={mid} r={5} fill="var(--panel)" stroke={nodeColor} strokeWidth={2.2} />
+          <circle cx={nodeX} cy={mid} r={2} fill={nodeColor} />
+        </>
+      ) : (
+        <circle cx={nodeX} cy={mid} r={4.2} fill={nodeColor} />
+      )}
     </svg>
   )
 }
@@ -334,14 +370,15 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
   const chips = parseDecorations(decorations)
   if (chips.length === 0) return null
   const visible = chips.slice(0, max)
-  const more = chips.length - visible.length
+  const hidden = chips.slice(max)
+  const more = hidden.length
   return (
     <>
       {visible.map((chip, index) => (
         <span
           key={`${chip.text}-${index}`}
           className={cn(
-            'max-w-[116px] truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
+            'max-w-[128px] truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
             chip.kind === 'head' && 'border-transparent bg-[var(--text-strong)] text-[var(--bg)]',
             chip.kind === 'tag' && 'border-[var(--warning-border)] bg-[var(--warning-soft)] text-[var(--warning)]',
             chip.kind === 'remote' && 'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]',
@@ -353,7 +390,10 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
         </span>
       ))}
       {more > 0 ? (
-        <span className="rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]">
+        <span
+          className="rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]"
+          title={hidden.map((chip) => chip.text).join('\n')}
+        >
           +{more}
         </span>
       ) : null}

@@ -237,10 +237,17 @@ def main() -> int:
         check(len({row["hash"] for row in history["rows"]}) == len(history["rows"]), "history unique hashes")
 
         allHistory = core.rpc("repo.history", {"path": str(repo), "filter": "all", "limit": 2000})
-        check(allHistory["count"] >= history["count"], "all history count")
+        check(allHistory["count"] > history["count"], "all history includes diverged branches")
         check(
             not any("index on" in row["subject"] for row in allHistory["rows"]),
             "all history excludes stash",
+        )
+        head_row = next(row for row in allHistory["rows"] if "HEAD" in row["decorations"])
+        check(head_row["lane"] == 0 and head_row["color"] == 0, "HEAD trunk anchored on lane 0")
+        side_tip = next(row for row in allHistory["rows"] if "feature/b" in row["decorations"])
+        check(
+            side_tip["lane"] > 0 and side_tip["color"] > 0 and not side_tip["nodeFromTop"],
+            "diverged branch tip shown on distinct side lane",
         )
 
         switched = core.rpc(

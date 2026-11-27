@@ -8,6 +8,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace gs {
 
@@ -57,19 +58,25 @@ std::string FirstLine(const std::string& text) {
 int NextLaneColor(const std::vector<std::string>& targets,
                   const std::vector<int>& colors,
                   int colorCount,
-                  int seed) {
-    for (int i = 0; i < colorCount; ++i) {
-        int candidate = (seed + i) % colorCount;
-        bool used = false;
-        for (size_t j = 0; j < targets.size(); ++j) {
-            if (!targets[j].empty() && colors[j] == candidate) {
-                used = true;
-                break;
+                  int seed,
+                  bool reserveZero = false) {
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = 0; i < colorCount; ++i) {
+            int candidate = (seed + i) % colorCount;
+            if (pass == 0 && reserveZero && candidate == 0) continue;
+            bool used = false;
+            for (size_t j = 0; j < targets.size(); ++j) {
+                if (!targets[j].empty() && colors[j] == candidate) {
+                    used = true;
+                    break;
+                }
             }
+            if (!used) return candidate;
         }
-        if (!used) return candidate;
     }
-    return seed % colorCount;
+    int fallback = seed % colorCount;
+    if (reserveZero && fallback == 0 && colorCount > 1) return 1;
+    return fallback;
 }
 
 struct LaneRef {
@@ -832,17 +839,27 @@ json RepoStashDiffJson(const std::string& path, int index) {
 
 json RepoHistoryJson(const std::string& path, const std::string& filter, int limit) {
     auto [current, upstream] = CurrentBranchAndUpstream(path);
+    std::string headHash;
+    auto headRes = RunGit(path, {"log", "-n", "1", "--format=%h", "HEAD"}, false, 15000);
+    if (headRes.ok) headHash = Trim(headRes.output);
+
     std::vector<std::string> revs;
     std::string filterLabel;
 
     if (filter == "all") {
-        revs = {"--branches", "--remotes", "--tags"};
+        if (!headHash.empty()) revs.push_back("HEAD");
+        revs.push_back("--branches");
+        revs.push_back("--remotes");
+        revs.push_back("--tags");
         filterLabel = "全部";
     } else if (filter.empty() || filter == "current") {
         if (!current.empty()) revs.push_back(current);
         if (!upstream.empty() && upstream != current) revs.push_back(upstream);
         if (revs.empty()) {
-            revs = {"--branches", "--remotes", "--tags"};
+            if (!headHash.empty()) revs.push_back("HEAD");
+            revs.push_back("--branches");
+            revs.push_back("--remotes");
+            revs.push_back("--tags");
             filterLabel = "全部";
         } else {
             filterLabel = Join(revs, " + ");
@@ -876,35 +893,77 @@ json RepoHistoryJson(const std::string& path, const std::string& filter, int lim
         }
     }
 
+    std::unordered_map<std::string, size_t> rowIndex;
+    rowIndex.reserve(rows.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        rowIndex[rows[i].hash] = i;
+    }
+
+    // Keep HEAD's first-parent chain anchored to lane 0 (blue) so diverged
+    // or ahead side branches stay on distinct side lanes instead of stealing lane 0.
+    std::unordered_set<std::string> trunkHashes;
+    if (!rows.empty()) {
+        std::string cursor = (!headHash.empty() && rowIndex.count(headHash)) ? headHash : rows.front().hash;
+        while (!cursor.empty()) {
+            auto it = rowIndex.find(cursor);
+            if (it == rowIndex.end() || !trunkHashes.insert(cursor).second) break;
+            const auto& parents = rows[it->second].parents;
+            cursor = parents.empty() ? std::string{} : parents.front();
+        }
+    }
+    size_t trunkRemaining = trunkHashes.size();
+    const bool reserveTrunk = !trunkHashes.empty();
+
     // Lane layout: each row is one commit, lanes point at future parent hashes.
     std::vector<std::string> targets;
     std::vector<int> colors;
-    int colorSeq = 0;
-    const int colorCount = 8;
+    int colorSeq = 1;
+    const int colorCount = 12;
 
     for (auto& row : rows) {
+        const bool isTrunk = trunkHashes.count(row.hash) > 0;
+        if (isTrunk && trunkRemaining > 0) --trunkRemaining;
+
         std::vector<int> hits;
         for (size_t i = 0; i < targets.size(); ++i) {
             if (!targets[i].empty() && targets[i] == row.hash) hits.push_back(static_cast<int>(i));
         }
 
-        bool fromTop = !hits.empty();
+        const size_t minSideLane = (reserveTrunk && trunkRemaining > 0) ? 1 : 0;
+        bool fromTop = false;
         int nodeLane = -1;
-        if (fromTop) {
-            nodeLane = hits.front();
-        } else {
-            for (size_t i = 0; i < targets.size(); ++i) {
-                if (targets[i].empty()) {
-                    nodeLane = static_cast<int>(i);
-                    break;
-                }
-            }
-            if (nodeLane < 0) {
+        if (isTrunk) {
+            nodeLane = 0;
+            if (targets.empty()) {
                 targets.push_back({});
                 colors.push_back(0);
-                nodeLane = static_cast<int>(targets.size()) - 1;
             }
-            colors[nodeLane] = NextLaneColor(targets, colors, colorCount, colorSeq++);
+            fromTop = std::find(hits.begin(), hits.end(), 0) != hits.end();
+            if (!fromTop) {
+                colors[0] = 0;
+            }
+        } else {
+            fromTop = !hits.empty();
+            if (fromTop) {
+                nodeLane = hits.front();
+            } else {
+                for (size_t i = minSideLane; i < targets.size(); ++i) {
+                    if (targets[i].empty()) {
+                        nodeLane = static_cast<int>(i);
+                        break;
+                    }
+                }
+                if (nodeLane < 0) {
+                    if (minSideLane == 1 && targets.empty()) {
+                        targets.push_back({});
+                        colors.push_back(0);
+                    }
+                    targets.push_back({});
+                    colors.push_back(0);
+                    nodeLane = static_cast<int>(targets.size()) - 1;
+                }
+                colors[nodeLane] = NextLaneColor(targets, colors, colorCount, colorSeq++, reserveTrunk);
+            }
         }
         row.lane = nodeLane;
         row.color = colors[nodeLane];
@@ -940,18 +999,22 @@ json RepoHistoryJson(const std::string& path, const std::string& filter, int lim
                     continue;
                 }
                 int freeLane = -1;
-                for (size_t i = 0; i < targets.size(); ++i) {
+                for (size_t i = minSideLane; i < targets.size(); ++i) {
                     if (targets[i].empty()) {
                         freeLane = static_cast<int>(i);
                         break;
                     }
                 }
                 if (freeLane < 0) {
+                    if (minSideLane == 1 && targets.empty()) {
+                        targets.push_back({});
+                        colors.push_back(0);
+                    }
                     targets.push_back({});
                     colors.push_back(0);
                     freeLane = static_cast<int>(targets.size()) - 1;
                 }
-                int newColor = NextLaneColor(targets, colors, colorCount, colorSeq++);
+                int newColor = NextLaneColor(targets, colors, colorCount, colorSeq++, reserveTrunk);
                 targets[freeLane] = parent;
                 colors[freeLane] = newColor;
                 row.outgoing.push_back({freeLane, newColor});
