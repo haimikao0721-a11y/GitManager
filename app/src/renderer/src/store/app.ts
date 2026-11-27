@@ -343,7 +343,7 @@ export const useAppStore = create<AppState>()((set, get) => {
   return {
     config: null,
     system: null,
-    version: '0.0.2',
+    version: '0.0.3',
     repos: [],
     openRepoPaths: persistedRepos.openRepoPaths,
     repoSnapshots: {},

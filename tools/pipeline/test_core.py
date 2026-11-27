@@ -75,7 +75,7 @@ class Core:
                 raise RuntimeError(f"core exited early with code {self.process.returncode}")
             try:
                 with urllib.request.urlopen(self.base + "/api/version", timeout=1) as response:
-                    if json.loads(response.read().decode())["version"] == "0.0.2":
+                    if json.loads(response.read().decode())["version"] == "0.0.3":
                         return
             except Exception:
                 time.sleep(0.1)
@@ -171,7 +171,7 @@ def main() -> int:
         check(True, "core HTTP started")
 
         info = core.rpc("system.info")
-        check(info["version"] == "0.0.2", "system.version")
+        check(info["version"] == "0.0.3", "system.version")
         check(info["git"]["installed"] is True, "git installed")
 
         config = core.rpc("config.get")["config"]
