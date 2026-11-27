@@ -132,10 +132,15 @@ export function WorkspacePage() {
   }, [selectedRepoPath])
 
   useEffect(() => {
+    const statusFiles = status?.files ?? []
     const availableUnstaged = new Set(
-      files.filter((file) => (file.unstaged || file.untracked) && !file.conflicted).map((file) => file.path)
+      statusFiles
+        .filter((file) => (file.unstaged || file.untracked) && !file.conflicted)
+        .map((file) => file.path)
     )
-    const availableStaged = new Set(files.filter((file) => file.staged && !file.conflicted).map((file) => file.path))
+    const availableStaged = new Set(
+      statusFiles.filter((file) => file.staged && !file.conflicted).map((file) => file.path)
+    )
     setSelectedUnstaged((previous) => new Set([...previous].filter((path) => availableUnstaged.has(path))))
     setSelectedStaged((previous) => new Set([...previous].filter((path) => availableStaged.has(path))))
   }, [status])
@@ -211,15 +216,21 @@ export function WorkspacePage() {
       : ''
 
   if (!repo) {
+    const scanning = Boolean(loading.scan || loading.bootstrap)
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
         <Card>
           <EmptyState
-            icon={<GitBranch className="h-5 w-5" />}
-            title="未选择仓库"
+            icon={scanning ? <Spinner /> : <GitBranch className="h-5 w-5" />}
+            title={scanning ? '正在扫描仓库…' : '未选择仓库'}
+            description={
+              scanning
+                ? '扫描完成后会自动选择第一个仓库，请稍候。'
+                : '请先在仓库页扫描或选择一个仓库。'
+            }
             action={
               <Button variant="primary" onClick={() => setActivePage('repos')}>
-                选择仓库
+                {scanning ? '查看扫描进度' : '选择仓库'}
               </Button>
             }
           />

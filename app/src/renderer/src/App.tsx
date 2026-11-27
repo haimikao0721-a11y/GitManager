@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { useAppStore } from '@/store/app'
 import { TitleBar } from '@/components/TitleBar'
@@ -16,6 +16,54 @@ const pages = {
   repos: ReposPage,
   workspace: WorkspacePage,
   settings: SettingsPage
+}
+
+class PageErrorBoundary extends Component<
+  { children: ReactNode; pageKey: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Page render failed', error, info)
+  }
+
+  componentDidUpdate(previous: { pageKey: string }) {
+    if (previous.pageKey !== this.props.pageKey && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full items-center justify-center p-6">
+          <Card className="max-w-lg p-6">
+            <div className="mb-3 flex items-center gap-2 text-[var(--danger)]">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="text-sm font-semibold">页面加载出错</span>
+            </div>
+            <p className="whitespace-pre-wrap text-xs leading-5 text-[var(--muted)]">
+              {this.state.error.message}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button variant="secondary" onClick={() => this.setState({ error: null })}>
+                重试
+              </Button>
+              <Button variant="primary" onClick={() => window.location.reload()}>
+                <RefreshCw className="h-3.5 w-3.5" /> 重新加载
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 export default function App() {
@@ -122,15 +170,17 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-hidden">
-          <div key={activePage} className="h-full">
-            {selfScroll ? (
-              <Page />
-            ) : (
-              <div className="h-full overflow-y-auto">
+          <PageErrorBoundary pageKey={activePage}>
+            <div key={activePage} className="h-full">
+              {selfScroll ? (
                 <Page />
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="h-full overflow-y-auto">
+                  <Page />
+                </div>
+              )}
+            </div>
+          </PageErrorBoundary>
         </main>
       </div>
       <Toasts />
