@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  Git管理器 launcher
 #  Starts the C++ web server and opens the UI as a browser app.
 # ============================================================
@@ -40,11 +40,17 @@ function Write-LauncherLog([string]$message) {
   } catch {}
 }
 
+$versionFile = Join-Path $root 'VERSION'
+$expectedVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { '' }
+
 function Test-AppServer([int]$port) {
   if ($port -le 0) { return $false }
   try {
     $result = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/version" -TimeoutSec 1
-    return ($result.version -eq '0.0.2')
+    if ($expectedVersion) {
+      return ($result.version -eq $expectedVersion)
+    }
+    return (-not [string]::IsNullOrWhiteSpace([string]$result.version))
   } catch {
     return $false
   }
