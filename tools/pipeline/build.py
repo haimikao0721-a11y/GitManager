@@ -96,7 +96,7 @@ def test_integration(core_exe: Path) -> None:
 def assemble(core_exe: Path) -> None:
     # Keep dist/data (config, browser profile, backups) across rebuilds.
     DIST.mkdir(parents=True, exist_ok=True)
-    for name in ("gitcore.exe", "Git账户切换器.exe", "Git管理器.exe", "web", "启动.ps1", "README.md", "CHANGELOG.md", "VERSION", "docs", "assets", "app.lnk", "Git账户切换器.lnk"):
+    for name in ("gitcore.exe", "Git账户切换器.exe", "Git管理器.exe", "web", "启动.ps1", "README.md", "README.en.md", "CHANGELOG.md", "VERSION", "docs", "assets", "app.lnk", "Git账户切换器.lnk"):
         target = DIST / name
         if target.is_dir():
             shutil.rmtree(target)
@@ -108,7 +108,7 @@ def assemble(core_exe: Path) -> None:
         shutil.copy2(launcher_exe, DIST / "Git管理器.exe")
     shutil.copytree(APP / "out" / "renderer", DIST / "web")
     shutil.copy2(ROOT / "启动.ps1", DIST / "启动.ps1")
-    for name in ("README.md", "VERSION", "CHANGELOG.md", "LICENSE"):
+    for name in ("README.md", "README.en.md", "VERSION", "CHANGELOG.md", "LICENSE"):
         source = ROOT / name
         if source.exists():
             shutil.copy2(source, DIST / name)
@@ -137,6 +137,7 @@ def package_release() -> Path:
         "assets",
         "docs",
         "README.md",
+        "README.en.md",
         "CHANGELOG.md",
         "VERSION",
         "LICENSE",
