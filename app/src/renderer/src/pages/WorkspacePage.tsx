@@ -638,15 +638,15 @@ export function WorkspacePage() {
           </div>
         ) : null}
 
-        <div className="relative grid grid-cols-1 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[212px_minmax(0,1fr)]">
+        <div className="relative grid grid-cols-1 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[228px_minmax(0,1fr)]">
           <Card className="flex min-h-[260px] flex-col xl:min-h-0">
-            <div className="flex shrink-0 items-center justify-between gap-1 border-b border-[var(--border)] px-2 py-1.5">
+            <div className="flex h-10 shrink-0 items-center justify-between gap-1.5 border-b border-[var(--border)] px-2">
               <div className="inline-flex min-w-0 flex-1 items-center rounded-md bg-[var(--panel-soft)] p-0.5 text-[11px]">
                 <button
                   type="button"
                   onClick={() => setLeftTab('branches')}
                   className={cn(
-                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    'focus-ring inline-flex h-[26px] flex-1 items-center justify-center gap-1 whitespace-nowrap rounded px-1.5 font-medium transition-colors',
                     leftTab === 'branches'
                       ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
                       : 'text-[var(--muted)] hover:text-[var(--text)]'
@@ -659,7 +659,7 @@ export function WorkspacePage() {
                   type="button"
                   onClick={() => setLeftTab('stashes')}
                   className={cn(
-                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    'focus-ring inline-flex h-[26px] flex-1 items-center justify-center gap-1 whitespace-nowrap rounded px-1.5 font-medium transition-colors',
                     leftTab === 'stashes'
                       ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
                       : 'text-[var(--muted)] hover:text-[var(--text)]'
@@ -674,7 +674,7 @@ export function WorkspacePage() {
                   type="button"
                   onClick={() => setLeftTab('account')}
                   className={cn(
-                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    'focus-ring inline-flex h-[26px] flex-1 items-center justify-center gap-1 whitespace-nowrap rounded px-1.5 font-medium transition-colors',
                     leftTab === 'account'
                       ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
                       : 'text-[var(--muted)] hover:text-[var(--text)]'
@@ -682,17 +682,26 @@ export function WorkspacePage() {
                 >
                   <span>账户</span>
                   {repo.identityMismatch ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--warning)]" />
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--warning)]" />
                   ) : null}
                 </button>
               </div>
-              {leftTab === 'branches' ? (
-                <Tooltip content="新建分支">
-                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => startCreateBranch()}>
-                    <GitBranchPlus className="h-3.5 w-3.5" />
-                  </Button>
-                </Tooltip>
-              ) : null}
+              <Tooltip content="新建分支">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="新建分支"
+                  tabIndex={leftTab === 'branches' ? 0 : -1}
+                  aria-hidden={leftTab !== 'branches'}
+                  className={cn(
+                    'h-7 w-7 shrink-0',
+                    leftTab !== 'branches' && 'pointer-events-none invisible'
+                  )}
+                  onClick={() => startCreateBranch()}
+                >
+                  <GitBranchPlus className="h-3.5 w-3.5" />
+                </Button>
+              </Tooltip>
             </div>
 
             {leftTab === 'branches' ? (
@@ -1330,7 +1339,7 @@ function BranchNodesPanel({
   return (
     <Card
       style={{ boxShadow: 'var(--shadow-lg)' }}
-      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[224px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
+      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[240px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
