@@ -122,6 +122,9 @@ export function WorkspacePage() {
   useEffect(() => {
     setInspectedBranch(null)
     setBranchNodes([])
+    setDiffTarget(null)
+    setStashDiff(null)
+    setContextMenu(null)
   }, [selectedRepoPath])
 
   useEffect(() => {
