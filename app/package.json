@@ -1,6 +1,6 @@
 {
   "name": "git-account-switcher-v2-ui",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Modern Git account switcher, workspace and commit graph",
   "author": "Git Account Switcher",
   "license": "MIT",

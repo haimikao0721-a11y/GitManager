@@ -224,7 +224,7 @@ export const useAppStore = create<AppState>()((set, get) => {
   return {
     config: null,
     system: null,
-    version: '0.0.1',
+    version: '0.0.2',
     repos: [],
     selectedRepoPath: '',
     activePage: 'accounts',

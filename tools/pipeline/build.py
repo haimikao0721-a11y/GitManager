@@ -96,16 +96,13 @@ def test_integration(core_exe: Path) -> None:
 def assemble(core_exe: Path) -> None:
     # Keep dist/data (config, browser profile, backups) across rebuilds.
     DIST.mkdir(parents=True, exist_ok=True)
-    for name in ("gitcore.exe", "Git账户切换器.exe", "Git管理器.exe", "web", "启动.ps1", "README.md", "README.en.md", "CHANGELOG.md", "VERSION", "docs", "assets", "app.lnk", "Git账户切换器.lnk"):
+    for name in ("gitcore.exe", "Git账户切换器.exe", "GitManager.exe", "Git管理器.exe", "web", "启动.ps1", "README.md", "README.en.md", "CHANGELOG.md", "VERSION", "docs", "assets", "app.lnk", "Git账户切换器.lnk"):
         target = DIST / name
         if target.is_dir():
             shutil.rmtree(target)
         elif target.exists():
             target.unlink()
     shutil.copy2(core_exe, DIST / "gitcore.exe")
-    launcher_exe = core_exe.parent / "launcher.exe"
-    if launcher_exe.exists():
-        shutil.copy2(launcher_exe, DIST / "Git管理器.exe")
     shutil.copytree(APP / "out" / "renderer", DIST / "web")
     shutil.copy2(ROOT / "启动.ps1", DIST / "启动.ps1")
     for name in ("README.md", "README.en.md", "VERSION", "CHANGELOG.md", "LICENSE"):
@@ -119,7 +116,7 @@ def assemble(core_exe: Path) -> None:
     if assets.exists():
         shutil.copytree(assets, DIST / "assets")
     print(f"\nPortable build ready: {DIST}")
-    print("Run dist/Git管理器.exe or dist/启动.ps1.")
+    print("Launch with the desktop shortcut Git管理器.lnk (backed by dist/启动.ps1).")
 
 
 def package_release() -> Path:
@@ -131,7 +128,6 @@ def package_release() -> Path:
         zip_path.unlink()
 
     include_items = (
-        "Git管理器.exe",
         "gitcore.exe",
         "web",
         "assets",
@@ -156,6 +152,11 @@ def package_release() -> Path:
                     if child.is_file():
                         rel = child.relative_to(DIST).as_posix()
                         zf.write(child, f"{archive_name}/{rel}")
+        portable_entry = (
+            "@echo off\r\n"
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0启动.ps1\"\r\n"
+        )
+        zf.writestr(f"{archive_name}/GitManager.cmd", portable_entry)
 
     print(f"Release archive ready: {zip_path}")
     return zip_path

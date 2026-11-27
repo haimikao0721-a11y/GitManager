@@ -1,13 +1,24 @@
 ﻿# 更新记录
 
+## 0.0.2 - 2026-11-27
+
+修复启动与分发问题，收敛为单一启动点。
+
+- **移除 explorer.exe 启动路径**：不再额外拉起 Explorer，修复 `explorer.exe - Application Error 0xc0000142` 弹窗阻塞快捷方式的问题。
+- **单一启动点**：桌面只保留 `Git管理器.lnk`，统一调用 `dist\启动.ps1`，再拉起 `gitcore.exe` 与 Edge 独立窗口。
+- **清理重复启动器**：`dist` 不再分发 `GitManager.exe`、`Git管理器.exe`、`app.lnk` 等重复入口。
+- **静态链接**：核心与工具不再依赖 `libwinpthread-1.dll`，从资源管理器直接启动更稳定。
+- **图标修复**：应用图标资源改为标准数字 ID，快捷方式统一使用 `assets\app.ico`。
+- **发布包**：解压后双击 `GitManager.cmd` 即可启动。
+
 ## 0.0.1 - 2026-11-27
 
-从 PowerShell + WinForms 完整重写为 **C++17 核心 + React/TypeScript UI + Win32 原生启动器**，并定名为 **Git管理器**。
+从 PowerShell + WinForms 完整重写为 **C++17 核心 + React/TypeScript UI + 单一快捷方式启动**，并定名为 **Git管理器**。
 
 ### 架构与封装
 
 - **C++17 核心 `gitcore.exe`**：调用 `git.exe`，负责配置管理、仓库扫描、账户切换、工作区状态/分支/Stash、提交历史 DAG、代理、Windows 凭据管理、SSH 与 GitHub API。
-- **Win32 GUI 启动器 `Git管理器.exe`**：替代快捷方式与 PowerShell 启动黑框，静默拉起 `gitcore.exe` 与 Chrome/Edge `--app` 独立窗口，内嵌完整多尺寸应用图标。
+- **单一启动点**：桌面 `Git管理器` 快捷方式调用 `dist\启动.ps1`，由脚本拉起 `gitcore.exe` 与 Edge `--app` 独立窗口；`dist` 不再分发重复的 exe/lnk 启动器。
 - **桌面化防护**：前端屏蔽浏览器默认右键菜单（仅保留输入框编辑菜单）、文本误选及 `F12` / `Ctrl+U` / `Ctrl+Shift+I` 等源码/调试快捷键。
 - **多端视觉一致性**：补充多分辨率 `favicon.ico`（16~128px BMP + 256px PNG）、`manifest.json` 及随主题动态同步的 `<meta name="theme-color">`，消除系统标题栏默认浅蓝底与地球图标。
 

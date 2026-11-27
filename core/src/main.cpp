@@ -99,7 +99,7 @@ json Dispatch(const std::string& method, const json& params) {
     // system / config -------------------------------------------------
     if (method == "system.info") {
         return json{
-            {"version", "0.0.1"},
+            {"version", "0.0.2"},
             {"configPath", g_configPath},
             {"dataDir", g_dataDir},
             {"platform", "windows"},
@@ -960,7 +960,7 @@ int RunWebMode(const std::string& webRoot, int preferredPort, bool openBrowser) 
     });
 
     server.Get("/api/version", [&](const httplib::Request&, httplib::Response& res) {
-        JsonReply(res, json{{"version", "0.0.1"}});
+        JsonReply(res, json{{"version", "0.0.2"}});
     });
     server.Get("/.*", [&](const httplib::Request& req, httplib::Response& res) {
         ServeStaticFile(root, req, res);
@@ -1058,7 +1058,7 @@ int main(int argc, char** argv) {
             } catch (...) {
             }
         } else if (arg == "--version") {
-            std::cout << "0.0.1\n";
+            std::cout << "0.0.2\n";
             return 0;
         }
     }

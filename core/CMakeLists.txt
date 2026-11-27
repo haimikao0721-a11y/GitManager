@@ -18,7 +18,7 @@ target_compile_definitions(gitcore PRIVATE UNICODE _UNICODE)
 target_link_libraries(gitcore PRIVATE advapi32 winhttp wininet ole32 shell32 user32 ws2_32 comdlg32 uuid gdi32)
 
 if(MINGW)
-    target_link_options(gitcore PRIVATE -static-libgcc -static-libstdc++)
+    target_link_options(gitcore PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
 
 if(MSVC)
@@ -37,8 +37,9 @@ add_executable(launcher WIN32
     src/app.rc
 )
 target_compile_definitions(launcher PRIVATE UNICODE _UNICODE)
+target_link_libraries(launcher PRIVATE ws2_32 shell32 advapi32 user32)
 if(MINGW)
-    target_link_options(launcher PRIVATE -mwindows -static-libgcc -static-libstdc++)
+    target_link_options(launcher PRIVATE -mwindows -static -static-libgcc -static-libstdc++)
 endif()
 if(MSVC)
     target_compile_options(launcher PRIVATE /W4 /utf-8)
