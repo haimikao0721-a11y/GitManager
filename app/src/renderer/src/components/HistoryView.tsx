@@ -28,6 +28,7 @@ export function HistoryView() {
   const checkoutTarget = useAppStore((state) => state.checkoutTarget)
   const selectedHash = useAppStore((state) => state.selectedCommitHash)
   const setSelectedHash = useAppStore((state) => state.setSelectedCommitHash)
+  const setInspectorFocus = useAppStore((state) => state.setInspectorFocus)
   const setInspectorOpen = useAppStore((state) => state.setInspectorOpen)
   const setInspectorTab = useAppStore((state) => state.setInspectorTab)
 
@@ -86,8 +87,8 @@ export function HistoryView() {
   if (!repo) return null
 
   return (
-    <div className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
-      <Card className="flex min-h-[420px] flex-1 flex-col xl:min-h-0">
+    <div className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
+      <Card className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2">
           <div className="flex items-center gap-3">
             <div className="w-[210px]">
@@ -164,15 +165,20 @@ export function HistoryView() {
                           : 'hover:bg-[var(--panel-soft)]'
                     )}
                     style={{ top: absoluteIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
-                    onClick={() => setSelectedHash(row.hash)}
+                    onClick={() => {
+                      setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
+                    }}
                     onDoubleClick={() => {
                       setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
                       setInspectorTab('changes')
                       setInspectorOpen(true)
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault()
                       setSelectedHash(row.hash)
+                      setInspectorFocus('commit')
                       setMenu({
                         x: event.clientX,
                         y: event.clientY,
@@ -182,6 +188,7 @@ export function HistoryView() {
                             icon: <FileDiff className="h-3.5 w-3.5" />,
                             onSelect: () => {
                               setSelectedHash(row.hash)
+                              setInspectorFocus('commit')
                               setInspectorTab('changes')
                               setInspectorOpen(true)
                             }

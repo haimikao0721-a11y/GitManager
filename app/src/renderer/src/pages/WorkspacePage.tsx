@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Archive,
@@ -6,7 +6,9 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Code2,
   Copy,
   Download,
@@ -16,6 +18,8 @@ import {
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
+  Maximize2,
+  Minimize2,
   PanelRight,
   Play,
   RefreshCw,
@@ -38,7 +42,6 @@ import {
   EmptyState,
   Field,
   Input,
-  SectionTitle,
   Select,
   Spinner,
   Switch,
@@ -68,8 +71,6 @@ export function WorkspacePage() {
   const branches = useAppStore((state) => state.branches)
   const stashes = useAppStore((state) => state.stashes)
   const loading = useAppStore((state) => state.loading)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
-  const setWorkspaceTab = useAppStore((state) => state.setWorkspaceTab)
   const refreshRepo = useAppStore((state) => state.refreshRepo)
   const setActivePage = useAppStore((state) => state.setActivePage)
   const fetchRepo = useAppStore((state) => state.fetchRepo)
@@ -88,8 +89,8 @@ export function WorkspacePage() {
   const resolveConflict = useAppStore((state) => state.resolveConflict)
   const switchAccount = useAppStore((state) => state.switchAccount)
   const inspectorOpen = useAppStore((state) => state.inspectorOpen)
-  const inspectorWidth = useAppStore((state) => state.inspectorWidth)
   const toggleInspector = useAppStore((state) => state.toggleInspector)
+  const setInspectorFocus = useAppStore((state) => state.setInspectorFocus)
   const setInspectorTab = useAppStore((state) => state.setInspectorTab)
   const selectedWorkFile = useAppStore((state) => state.selectedWorkFile)
   const setSelectedWorkFile = useAppStore((state) => state.setSelectedWorkFile)
@@ -99,6 +100,11 @@ export function WorkspacePage() {
 
   const repo = repos.find((item) => item.path === selectedRepoPath)
   const accounts = config?.accounts ?? []
+  const [leftTab, setLeftTab] = useState<'branches' | 'stashes' | 'account'>('branches')
+  const [changesOverride, setChangesOverride] = useState<boolean | null>(null)
+  const [changesHeight, setChangesHeight] = useState(248)
+  const changesDragRef = useRef<{ startY: number; startHeight: number } | null>(null)
+  const [resizingChanges, setResizingChanges] = useState(false)
   const [branchDialog, setBranchDialog] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
   const [newBranchBase, setNewBranchBase] = useState('')
@@ -135,9 +141,29 @@ export function WorkspacePage() {
     setDiffTarget(null)
     setStashDiff(null)
     setContextMenu(null)
+    setChangesOverride(null)
     setSelectedUnstaged(new Set())
     setSelectedStaged(new Set())
   }, [selectedRepoPath])
+
+  useEffect(() => {
+    if (!resizingChanges) return
+    const onMove = (event: MouseEvent) => {
+      if (!changesDragRef.current) return
+      const next = changesDragRef.current.startHeight + (event.clientY - changesDragRef.current.startY)
+      setChangesHeight(Math.max(168, Math.min(520, Math.round(next))))
+    }
+    const onUp = () => {
+      changesDragRef.current = null
+      setResizingChanges(false)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [resizingChanges])
 
   useEffect(() => {
     const statusFiles = status?.files ?? []
@@ -462,6 +488,7 @@ export function WorkspacePage() {
               selected={selected.has(file.path)}
               onSelect={() => {
                 setSelectedWorkFile({ path: file.path, mode })
+                setInspectorFocus('working')
                 if (inspectorOpen) setInspectorTab('changes')
               }}
               onSelectedChange={() => onToggle(file.path)}
@@ -497,37 +524,6 @@ export function WorkspacePage() {
                     </option>
                   ))}
                 </Select>
-              </div>
-              <div className="inline-flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--panel-soft)] p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setWorkspaceTab('changes')}
-                  className={cn(
-                    'focus-ring inline-flex h-full items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors',
-                    workspaceTab === 'changes'
-                      ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
-                      : 'text-[var(--muted)] hover:text-[var(--text)]'
-                  )}
-                >
-                  <span>变更</span>
-                  {files.length > 0 ? (
-                    <span className="rounded bg-[var(--accent-soft)] px-1 text-[10px] tabular-nums text-[var(--accent)]">
-                      {files.length}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWorkspaceTab('history')}
-                  className={cn(
-                    'focus-ring inline-flex h-full items-center rounded px-2.5 text-xs font-medium transition-colors',
-                    workspaceTab === 'history'
-                      ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
-                      : 'text-[var(--muted)] hover:text-[var(--text)]'
-                  )}
-                >
-                  提交历史
-                </button>
               </div>
               <Badge variant={branchLabel === 'detached' ? 'warning' : 'outline'}>
                 <GitBranch className="h-3 w-3" />
@@ -574,13 +570,13 @@ export function WorkspacePage() {
               <Button
                 variant="ghost"
                 size="icon"
-                loading={loading.repo || (workspaceTab === 'history' && loading.history)}
+                loading={loading.repo || loading.history}
                 onClick={async () => {
-                  await refreshRepo({ history: workspaceTab === 'history' })
+                  await refreshRepo({ history: true })
                   if (inspectedBranch) loadBranchNodes(inspectedBranch)
                 }}
               >
-                {!(loading.repo || (workspaceTab === 'history' && loading.history)) ? (
+                {!(loading.repo || loading.history) ? (
                   <RefreshCw className="h-3.5 w-3.5" />
                 ) : null}
               </Button>
@@ -649,33 +645,64 @@ export function WorkspacePage() {
           </div>
         ) : null}
 
-        {workspaceTab === 'history' ? (
-          <HistoryView />
-        ) : (
-          <div
-            className={cn(
-              'relative grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1',
-              !inspectorOpen
-                ? 'xl:grid-cols-[240px_minmax(0,1fr)_300px]'
-                : inspectorWidth >= 560
-                  ? 'min-[1580px]:grid-cols-[190px_minmax(0,1fr)_230px]'
-                  : 'min-[1500px]:grid-cols-[210px_minmax(0,1fr)_250px] xl:grid-cols-[185px_minmax(0,1fr)_225px]'
-            )}
-          >
-            <Card className="flex min-h-[300px] flex-col xl:min-h-0">
-              <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-semibold text-[var(--text-strong)]">分支</span>
-                  <span className="text-xs tabular-nums text-[var(--faint)]">
-                    {localBranches.length}/{remoteBranches.length}
-                  </span>
-                </div>
+        <div className="relative grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[232px_minmax(0,1fr)]">
+          <Card className="flex min-h-[260px] flex-col xl:min-h-0">
+            <div className="flex shrink-0 items-center justify-between gap-1 border-b border-[var(--border)] px-2 py-1.5">
+              <div className="inline-flex min-w-0 flex-1 items-center rounded-md bg-[var(--panel-soft)] p-0.5 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setLeftTab('branches')}
+                  className={cn(
+                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    leftTab === 'branches'
+                      ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  )}
+                >
+                  <span>分支</span>
+                  <span className="text-[10px] tabular-nums text-[var(--faint)]">{localBranches.length}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeftTab('stashes')}
+                  className={cn(
+                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    leftTab === 'stashes'
+                      ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  )}
+                >
+                  <span>Stash</span>
+                  {stashes.length > 0 ? (
+                    <span className="text-[10px] tabular-nums text-[var(--faint)]">{stashes.length}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeftTab('account')}
+                  className={cn(
+                    'focus-ring inline-flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 font-medium transition-colors',
+                    leftTab === 'account'
+                      ? 'bg-[var(--panel)] text-[var(--text-strong)] shadow-sm'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  )}
+                >
+                  <span>账户</span>
+                  {repo.identityMismatch ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--warning)]" />
+                  ) : null}
+                </button>
+              </div>
+              {leftTab === 'branches' ? (
                 <Tooltip content="新建分支">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startCreateBranch()}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => startCreateBranch()}>
                     <GitBranchPlus className="h-3.5 w-3.5" />
                   </Button>
                 </Tooltip>
-              </div>
+              ) : null}
+            </div>
+
+            {leftTab === 'branches' ? (
               <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
                 <BranchGroup
                   title="本地"
@@ -700,164 +727,8 @@ export function WorkspacePage() {
                   </div>
                 ) : null}
               </div>
-            </Card>
-
-            {inspectedBranch ? (
-              <BranchNodesPanel
-                branch={inspectedBranch}
-                rows={branchNodes}
-                loading={branchNodesLoading}
-                onClose={() => setInspectedBranch(null)}
-                onSwitchBranch={() => handleSwitchBranch(inspectedBranch.shortName)}
-                onNodeContextMenu={openNodeContextMenu}
-              />
-            ) : null}
-
-            <Card className="flex min-h-[420px] flex-col xl:min-h-0">
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-2.5">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-[13px] font-semibold text-[var(--text-strong)]">变更</span>
-                  <span className="text-xs tabular-nums text-[var(--muted)]">
-                    已暂存 {staged.length} · 未暂存 {unstaged.length}
-                    {conflicted.length > 0 ? ` · 冲突 ${conflicted.length}` : ''}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => stageFiles()} disabled={files.length === 0 || loading.mutation}>
-                    <Check className="h-3.5 w-3.5" /> 全部暂存
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => unstageFiles()} disabled={staged.length === 0 || loading.mutation}>
-                    <Undo2 className="h-3.5 w-3.5" /> 全部取消
-                  </Button>
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {files.length === 0 ? (
-                  <EmptyState
-                    icon={<Check className="h-5 w-5" />}
-                    title="工作区干净"
-                    className="h-full min-h-[200px]"
-                  />
-                ) : (
-                  <div>
-                    {conflicted.length > 0
-                      ? renderFileGroup('冲突', conflicted, 'unstaged', new Set(), () => {}, () => {}, undefined, false)
-                      : null}
-                    {renderFileGroup(
-                      '未暂存',
-                      unstaged,
-                      'unstaged',
-                      selectedUnstaged,
-                      toggleUnstaged,
-                      () =>
-                        setSelectedUnstaged((previous) =>
-                          previous.size === unstaged.length
-                            ? new Set()
-                            : new Set(unstaged.map((file) => file.path))
-                        ),
-                      {
-                        label: '暂存选中',
-                        disabled: selectedUnstaged.size === 0,
-                        onClick: stageSelected
-                      }
-                    )}
-                    {renderFileGroup(
-                      '已暂存',
-                      staged,
-                      'staged',
-                      selectedStaged,
-                      toggleStaged,
-                      () =>
-                        setSelectedStaged((previous) =>
-                          previous.size === staged.length
-                            ? new Set()
-                            : new Set(staged.map((file) => file.path))
-                        ),
-                      {
-                        label: '取消暂存选中',
-                        disabled: selectedStaged.size === 0,
-                        onClick: unstageSelected
-                      }
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="shrink-0 border-t border-[var(--border)] p-3.5">
-                <Textarea
-                  value={commitMessage}
-                  onChange={(event) => setCommitMessage(event.target.value)}
-                  placeholder="提交说明（Ctrl + Enter 提交）"
-                  className="min-h-[82px]"
-                  onKeyDown={(event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                      event.preventDefault()
-                      submitCommit()
-                    }
-                  }}
-                />
-                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--muted)]">
-                    <Switch checked={commitAndPush} onCheckedChange={setCommitAndPush} />
-                    提交后推送
-                  </label>
-                  <Button
-                    variant="primary"
-                    loading={loading.mutation}
-                    disabled={!commitMessage.trim() || staged.length === 0}
-                    onClick={submitCommit}
-                  >
-                    <GitCommitHorizontal className="h-3.5 w-3.5" />
-                    提交{staged.length > 0 ? ` (${staged.length})` : ''}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            <div className="flex flex-col gap-4 xl:min-h-0">
-              <Card className="shrink-0 p-4">
-                <SectionTitle title="仓库账户" />
-                <div className="space-y-3">
-                  <Field label="账号">
-                    <Select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-                      <option value="">选择账号</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="协议">
-                    <Select value={protocol} onChange={(event) => setProtocol(event.target.value as 'https' | 'ssh')}>
-                      <option value="https">HTTPS</option>
-                      <option value="ssh">SSH</option>
-                    </Select>
-                  </Field>
-                  {previewUrl ? (
-                    <div
-                      className="code-font break-all rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-1.5 text-[11px] leading-4 text-[var(--muted)]"
-                      title={previewUrl}
-                    >
-                      {previewUrl}
-                    </div>
-                  ) : null}
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    loading={loading.mutation}
-                    disabled={!accountId}
-                    onClick={() => switchAccount(accountId, protocol)}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    应用到当前仓库
-                  </Button>
-                </div>
-              </Card>
-
-              <Card className="flex min-h-[220px] flex-col p-4 xl:min-h-0 xl:flex-1">
-                <SectionTitle title="Stash" />
+            ) : leftTab === 'stashes' ? (
+              <div className="flex min-h-0 flex-1 flex-col p-3">
                 <div className="shrink-0 space-y-2.5">
                   <Input
                     value={stashMessage}
@@ -940,10 +811,256 @@ export function WorkspacePage() {
                     ))
                   )}
                 </div>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3.5">
+                <Field label="账号">
+                  <Select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                    <option value="">选择账号</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="协议">
+                  <Select value={protocol} onChange={(event) => setProtocol(event.target.value as 'https' | 'ssh')}>
+                    <option value="https">HTTPS</option>
+                    <option value="ssh">SSH</option>
+                  </Select>
+                </Field>
+                {previewUrl ? (
+                  <div
+                    className="code-font break-all rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-2.5 py-1.5 text-[11px] leading-4 text-[var(--muted)]"
+                    title={previewUrl}
+                  >
+                    {previewUrl}
+                  </div>
+                ) : null}
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  loading={loading.mutation}
+                  disabled={!accountId}
+                  onClick={() => switchAccount(accountId, protocol)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  应用到当前仓库
+                </Button>
+              </div>
+            )}
+          </Card>
+
+          {inspectedBranch ? (
+            <BranchNodesPanel
+              branch={inspectedBranch}
+              rows={branchNodes}
+              loading={branchNodesLoading}
+              onClose={() => setInspectedBranch(null)}
+              onSwitchBranch={() => handleSwitchBranch(inspectedBranch.shortName)}
+              onNodeContextMenu={openNodeContextMenu}
+            />
+          ) : null}
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {!(changesOverride ?? files.length > 0) ? (
+              <Card className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2">
+                <div className="flex items-center gap-2.5">
+                  {files.length === 0 ? (
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--success-soft)] text-[var(--success)]">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    <span className="inline-flex h-2 w-2 rounded-full bg-[var(--warning)]" />
+                  )}
+                  <span className="text-xs font-semibold text-[var(--text-strong)]">
+                    {files.length === 0 ? '工作区干净' : `工作区变更 (${files.length})`}
+                  </span>
+                  <span className="text-xs tabular-nums text-[var(--faint)]">
+                    已暂存 {staged.length} · 未暂存 {unstaged.length}
+                    {conflicted.length > 0 ? ` · 冲突 ${conflicted.length}` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {files.length > 0 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => stageFiles()}
+                      disabled={loading.mutation}
+                    >
+                      <Check className="h-3.5 w-3.5" /> 全部暂存
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setChangesOverride(true)}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    {files.length === 0 ? '展开提交区' : '展开变更'}
+                  </Button>
+                </div>
               </Card>
-            </div>
+            ) : (
+              <>
+                <Card
+                  style={{ height: changesHeight }}
+                  className="flex shrink-0 flex-col xl:min-h-[168px]"
+                >
+                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[13px] font-semibold text-[var(--text-strong)]">变更</span>
+                      <span className="text-xs tabular-nums text-[var(--muted)]">
+                        已暂存 {staged.length} · 未暂存 {unstaged.length}
+                        {conflicted.length > 0 ? ` · 冲突 ${conflicted.length}` : ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => stageFiles()} disabled={files.length === 0 || loading.mutation}>
+                        <Check className="h-3.5 w-3.5" /> 全部暂存
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => unstageFiles()} disabled={staged.length === 0 || loading.mutation}>
+                        <Undo2 className="h-3.5 w-3.5" /> 全部取消
+                      </Button>
+                      <Tooltip content={changesHeight >= 380 ? '还原高度' : '加高变更区'}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setChangesHeight(changesHeight >= 380 ? 248 : 420)}
+                        >
+                          {changesHeight >= 380 ? (
+                            <Minimize2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <Maximize2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </Tooltip>
+                      <Tooltip content="收起变更区">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setChangesOverride(false)}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  </div>
+
+                  <div className="grid min-h-0 flex-1 grid-cols-1 divide-y divide-[var(--border)] md:grid-cols-[minmax(0,1fr)_248px] md:divide-x md:divide-y-0">
+                    <div className="min-h-0 overflow-y-auto">
+                      {files.length === 0 ? (
+                        <EmptyState
+                          icon={<Check className="h-5 w-5" />}
+                          title="工作区干净"
+                          className="h-full min-h-[110px]"
+                        />
+                      ) : (
+                        <div>
+                          {conflicted.length > 0
+                            ? renderFileGroup('冲突', conflicted, 'unstaged', new Set(), () => {}, () => {}, undefined, false)
+                            : null}
+                          {renderFileGroup(
+                            '未暂存',
+                            unstaged,
+                            'unstaged',
+                            selectedUnstaged,
+                            toggleUnstaged,
+                            () =>
+                              setSelectedUnstaged((previous) =>
+                                previous.size === unstaged.length
+                                  ? new Set()
+                                  : new Set(unstaged.map((file) => file.path))
+                              ),
+                            {
+                              label: '暂存选中',
+                              disabled: selectedUnstaged.size === 0,
+                              onClick: stageSelected
+                            }
+                          )}
+                          {renderFileGroup(
+                            '已暂存',
+                            staged,
+                            'staged',
+                            selectedStaged,
+                            toggleStaged,
+                            () =>
+                              setSelectedStaged((previous) =>
+                                previous.size === staged.length
+                                  ? new Set()
+                                  : new Set(staged.map((file) => file.path))
+                              ),
+                            {
+                              label: '取消暂存选中',
+                              disabled: selectedStaged.size === 0,
+                              onClick: unstageSelected
+                            }
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex min-h-0 flex-col justify-between gap-2 p-3">
+                      <Textarea
+                        value={commitMessage}
+                        onChange={(event) => setCommitMessage(event.target.value)}
+                        placeholder="提交说明（Ctrl + Enter 提交）"
+                        className="min-h-[68px] flex-1 resize-none"
+                        onKeyDown={(event) => {
+                          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                            event.preventDefault()
+                            submitCommit()
+                          }
+                        }}
+                      />
+                      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                        <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--muted)]">
+                          <Switch checked={commitAndPush} onCheckedChange={setCommitAndPush} />
+                          提交后推送
+                        </label>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          loading={loading.mutation}
+                          disabled={!commitMessage.trim() || staged.length === 0}
+                          onClick={submitCommit}
+                        >
+                          <GitCommitHorizontal className="h-3.5 w-3.5" />
+                          提交{staged.length > 0 ? ` (${staged.length})` : ''}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="调整变更与提交历史高度比例"
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    changesDragRef.current = { startY: event.clientY, startHeight: changesHeight }
+                    setResizingChanges(true)
+                  }}
+                  className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center"
+                >
+                  <span
+                    className={cn(
+                      'h-1 w-12 rounded-full transition-colors',
+                      resizingChanges ? 'bg-[var(--accent)]' : 'bg-[var(--border)] group-hover:bg-[var(--accent)]/60'
+                    )}
+                  />
+                </div>
+              </>
+            )}
+
+            <HistoryView />
           </div>
-        )}
+        </div>
       </div>
 
       <Dialog

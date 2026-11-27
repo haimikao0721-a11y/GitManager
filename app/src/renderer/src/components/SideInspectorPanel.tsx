@@ -125,7 +125,8 @@ export function SideInspectorPanel({
 }: SideInspectorPanelProps) {
   const repos = useAppStore((state) => state.repos)
   const selectedRepoPath = useAppStore((state) => state.selectedRepoPath)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
+  const inspectorFocus = useAppStore((state) => state.inspectorFocus)
+  const setInspectorFocus = useAppStore((state) => state.setInspectorFocus)
   const status = useAppStore((state) => state.status)
   const stashes = useAppStore((state) => state.stashes)
   const history = useAppStore((state) => state.history)
@@ -144,12 +145,12 @@ export function SideInspectorPanel({
   const refreshRepo = useAppStore((state) => state.refreshRepo)
 
   const repo = repos.find((item) => item.path === selectedRepoPath)
-  const isHistoryMode = workspaceTab === 'history'
   const rows = history?.rows ?? []
   const selectedHistoryRow: HistoryRow | null = useMemo(() => {
-    if (!isHistoryMode || rows.length === 0) return null
+    if (rows.length === 0) return null
     return rows.find((row) => row.hash === selectedCommitHash) ?? rows[0] ?? null
-  }, [isHistoryMode, rows, selectedCommitHash])
+  }, [rows, selectedCommitHash])
+  const isHistoryMode = inspectorFocus === 'commit'
 
   const targetRef = isHistoryMode ? selectedHistoryRow?.hash || 'HEAD' : 'HEAD'
 
@@ -321,6 +322,32 @@ export function SideInspectorPanel({
 
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[var(--border)] bg-[var(--panel-soft)]/70 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
+          <div className="mb-1.5 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--panel)] p-0.5 text-[10px]">
+            <button
+              type="button"
+              onClick={() => setInspectorFocus('working')}
+              className={cn(
+                'focus-ring rounded px-2 py-0.5 font-medium transition-colors',
+                !isHistoryMode
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              )}
+            >
+              工作区{workingFiles.length > 0 ? ` (${workingFiles.length})` : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInspectorFocus('commit')}
+              className={cn(
+                'focus-ring rounded px-2 py-0.5 font-medium transition-colors',
+                isHistoryMode
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              )}
+            >
+              提交 {selectedHistoryRow?.hash || ''}
+            </button>
+          </div>
           {isHistoryMode ? (
             selectedHistoryRow ? (
               <>
