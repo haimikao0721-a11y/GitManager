@@ -102,6 +102,8 @@ export function WorkspacePage() {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [diffTarget, setDiffTarget] = useState<{ file: StatusFile; mode: 'unstaged' | 'staged' } | null>(null)
   const [stashDiff, setStashDiff] = useState<number | null>(null)
+  const [selectedUnstaged, setSelectedUnstaged] = useState<Set<string>>(new Set())
+  const [selectedStaged, setSelectedStaged] = useState<Set<string>>(new Set())
   const [accountId, setAccountId] = useState('')
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https')
 
@@ -125,7 +127,18 @@ export function WorkspacePage() {
     setDiffTarget(null)
     setStashDiff(null)
     setContextMenu(null)
+    setSelectedUnstaged(new Set())
+    setSelectedStaged(new Set())
   }, [selectedRepoPath])
+
+  useEffect(() => {
+    const availableUnstaged = new Set(
+      files.filter((file) => (file.unstaged || file.untracked) && !file.conflicted).map((file) => file.path)
+    )
+    const availableStaged = new Set(files.filter((file) => file.staged && !file.conflicted).map((file) => file.path))
+    setSelectedUnstaged((previous) => new Set([...previous].filter((path) => availableUnstaged.has(path))))
+    setSelectedStaged((previous) => new Set([...previous].filter((path) => availableStaged.has(path))))
+  }, [status])
 
   useEffect(() => {
     if (!repo) return
@@ -343,17 +356,76 @@ export function WorkspacePage() {
     })
   }
 
+  const toggleUnstaged = (path: string) => {
+    setSelectedUnstaged((previous) => {
+      const next = new Set(previous)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const toggleStaged = (path: string) => {
+    setSelectedStaged((previous) => {
+      const next = new Set(previous)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const stageSelected = async () => {
+    if (selectedUnstaged.size === 0) return
+    await stageFiles([...selectedUnstaged])
+    setSelectedUnstaged(new Set())
+  }
+
+  const unstageSelected = async () => {
+    if (selectedStaged.size === 0) return
+    await unstageFiles([...selectedStaged])
+    setSelectedStaged(new Set())
+  }
+
   const renderFileGroup = (
     title: string,
     list: StatusFile[],
-    mode: 'unstaged' | 'staged'
+    mode: 'unstaged' | 'staged',
+    selected: Set<string>,
+    onToggle: (path: string) => void,
+    onToggleAll: () => void,
+    action?: { label: string; disabled: boolean; onClick: () => void },
+    selectable = true
   ) => (
     <div>
-      <div className="sticky top-0 z-10 flex items-center justify-between border-y border-[var(--border)] bg-[var(--panel-soft)] px-4 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
-          {title}
-        </span>
-        <span className="text-[10px] tabular-nums text-[var(--faint)]">{list.length}</span>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-y border-[var(--border)] bg-[var(--panel-soft)] px-4 py-1.5">
+        <label className="flex min-w-0 cursor-pointer items-center gap-2">
+          {selectable ? (
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-[var(--accent)]"
+              checked={list.length > 0 && selected.size === list.length}
+              onChange={onToggleAll}
+              disabled={list.length === 0 || loading.mutation}
+              aria-label={`全选${title}`}
+            />
+          ) : null}
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+            {title}
+          </span>
+          <span className="text-[10px] tabular-nums text-[var(--faint)]">{list.length}</span>
+        </label>
+        {action ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 shrink-0 px-2 text-[10px]"
+            disabled={action.disabled || loading.mutation}
+            onClick={action.onClick}
+          >
+            {action.label}
+            {selected.size > 0 ? ` (${selected.size})` : ''}
+          </Button>
+        ) : null}
       </div>
       {list.length === 0 ? (
         <div className="px-4 py-3 text-[11px] text-[var(--faint)]">暂无{title}改动</div>
@@ -363,8 +435,9 @@ export function WorkspacePage() {
             <FileRow
               key={`${mode}:${file.xy}:${file.path}`}
               file={file}
-              onStage={() => stageFiles([file.path])}
-              onUnstage={() => unstageFiles([file.path])}
+              selected={selected.has(file.path)}
+              onSelectedChange={() => onToggle(file.path)}
+              selectable={selectable}
               onOpenDiff={() => setDiffTarget({ file, mode })}
               onDiscard={() => requestDiscard(file)}
               onResolve={(side) => resolveConflict(file.path, side)}
@@ -619,10 +692,44 @@ export function WorkspacePage() {
                 ) : (
                   <div>
                     {conflicted.length > 0
-                      ? renderFileGroup('冲突', conflicted, 'unstaged')
+                      ? renderFileGroup('冲突', conflicted, 'unstaged', new Set(), () => {}, () => {}, undefined, false)
                       : null}
-                    {renderFileGroup('未暂存', unstaged, 'unstaged')}
-                    {renderFileGroup('已暂存', staged, 'staged')}
+                    {renderFileGroup(
+                      '未暂存',
+                      unstaged,
+                      'unstaged',
+                      selectedUnstaged,
+                      toggleUnstaged,
+                      () =>
+                        setSelectedUnstaged((previous) =>
+                          previous.size === unstaged.length
+                            ? new Set()
+                            : new Set(unstaged.map((file) => file.path))
+                        ),
+                      {
+                        label: '暂存选中',
+                        disabled: selectedUnstaged.size === 0,
+                        onClick: stageSelected
+                      }
+                    )}
+                    {renderFileGroup(
+                      '已暂存',
+                      staged,
+                      'staged',
+                      selectedStaged,
+                      toggleStaged,
+                      () =>
+                        setSelectedStaged((previous) =>
+                          previous.size === staged.length
+                            ? new Set()
+                            : new Set(staged.map((file) => file.path))
+                        ),
+                      {
+                        label: '取消暂存选中',
+                        disabled: selectedStaged.size === 0,
+                        onClick: unstageSelected
+                      }
+                    )}
                   </div>
                 )}
               </div>
@@ -1164,16 +1271,18 @@ function BranchNodesPanel({
 
 function FileRow({
   file,
-  onStage,
-  onUnstage,
+  selected,
+  onSelectedChange,
+  selectable = true,
   onOpenDiff,
   onDiscard,
   onResolve,
   disabled = false
 }: {
   file: StatusFile
-  onStage: () => void
-  onUnstage: () => void
+  selected: boolean
+  onSelectedChange: () => void
+  selectable?: boolean
   onOpenDiff: () => void
   onDiscard: () => void
   onResolve: (side: 'ours' | 'theirs') => void
@@ -1188,6 +1297,18 @@ function FileRow({
         : 'warning'
   return (
     <div className="group flex items-center gap-2.5 px-4 py-2 hover:bg-[var(--panel-soft)]">
+      {selectable ? (
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
+          checked={selected}
+          onChange={onSelectedChange}
+          disabled={disabled}
+          aria-label={`选择 ${file.displayPath}`}
+        />
+      ) : (
+        <span className="w-3.5 shrink-0" />
+      )}
       <span className="code-font w-5 shrink-0 text-center text-[11px] font-semibold text-[var(--faint)]">
         {file.xy}
       </span>
@@ -1213,37 +1334,19 @@ function FileRow({
               用对方的
             </Button>
           </>
-        ) : (
-          <>
-            {file.staged ? (
-              <Tooltip content="取消暂存">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onUnstage} disabled={disabled}>
-                  <Undo2 className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            ) : null}
-            {file.unstaged || file.untracked ? (
-              <Tooltip content="暂存">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onStage} disabled={disabled}>
-                  <Check className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            ) : null}
-            {!file.staged ? (
-              <Tooltip content="丢弃修改">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 text-[var(--faint)] hover:text-[var(--danger)]"
-                  onClick={onDiscard}
-                  disabled={disabled}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            ) : null}
-          </>
-        )}
+        ) : !file.staged ? (
+          <Tooltip content="丢弃修改">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-[var(--faint)] hover:text-[var(--danger)]"
+              onClick={onDiscard}
+              disabled={disabled}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   )

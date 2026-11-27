@@ -43,9 +43,6 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
-let repoRefreshSeq = 0
-let historyRefreshSeq = 0
-
 const THEME_CHROME_COLORS: Record<Theme, { color: string; scheme: 'dark' | 'light' }> = {
   dark: { color: '#14161a', scheme: 'dark' },
   light: { color: '#fbfbfc', scheme: 'light' },
@@ -420,7 +417,6 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     selectRepo: async (path) => {
       if (get().selectedRepoPath === path && get().status) return
-      repoRefreshSeq += 1
       set({
         selectedRepoPath: path,
         status: null,
@@ -438,7 +434,6 @@ export const useAppStore = create<AppState>()((set, get) => {
     refreshRepo: async (options = {}) => {
       const path = get().selectedRepoPath
       if (!path) return
-      const requestId = ++repoRefreshSeq
       setLoading('repo', true)
       try {
         const [status, branchesResult, stashesResult] = await Promise.all([
@@ -446,7 +441,7 @@ export const useAppStore = create<AppState>()((set, get) => {
           call<{ branches: Branch[] }>('repo.branches', { path }),
           call<StashesResult>('repo.stashes', { path })
         ])
-        if (requestId !== repoRefreshSeq || get().selectedRepoPath !== path) return
+        if (get().selectedRepoPath !== path) return
         set({
           status,
           branches: branchesResult.branches,
@@ -454,13 +449,9 @@ export const useAppStore = create<AppState>()((set, get) => {
         })
         if (options.history) await get().refreshHistory()
       } catch (error) {
-        if (requestId === repoRefreshSeq && get().selectedRepoPath === path) {
-          fail(error, '读取仓库状态失败')
-        }
+        if (get().selectedRepoPath === path) fail(error, '读取仓库状态失败')
       } finally {
-        if (requestId === repoRefreshSeq && get().selectedRepoPath === path) {
-          setLoading('repo', false)
-        }
+        if (get().selectedRepoPath === path) setLoading('repo', false)
       }
     },
 
@@ -468,7 +459,6 @@ export const useAppStore = create<AppState>()((set, get) => {
       const path = get().selectedRepoPath
       if (!path) return
       const nextFilter = filter ?? get().historyFilter
-      const requestId = ++historyRefreshSeq
       set({ historyFilter: nextFilter })
       setLoading('history', true)
       try {
@@ -478,20 +468,16 @@ export const useAppStore = create<AppState>()((set, get) => {
           filter: nextFilter,
           limit
         })
-        if (requestId !== historyRefreshSeq || get().selectedRepoPath !== path) return
+        if (get().selectedRepoPath !== path) return
         set({
           history,
           historyFilter:
             nextFilter === 'current' && !history.current ? 'all' : nextFilter
         })
       } catch (error) {
-        if (requestId === historyRefreshSeq && get().selectedRepoPath === path) {
-          fail(error, '读取提交历史失败')
-        }
+        if (get().selectedRepoPath === path) fail(error, '读取提交历史失败')
       } finally {
-        if (requestId === historyRefreshSeq && get().selectedRepoPath === path) {
-          setLoading('history', false)
-        }
+        if (get().selectedRepoPath === path) setLoading('history', false)
       }
     },
 
