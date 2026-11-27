@@ -1,7 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   FolderGit2,
   GitBranch,
   HardDrive,
@@ -52,13 +55,23 @@ export function Sidebar() {
   const selectedRepoPath = useAppStore((state) => state.selectedRepoPath)
   const selectRepo = useAppStore((state) => state.selectRepo)
   const scanRepos = useAppStore((state) => state.scanRepos)
+  const setDefaultAccount = useAppStore((state) => state.setDefaultAccount)
+  const setPaletteOpen = useAppStore((state) => state.setPaletteOpen)
   const loading = useAppStore((state) => state.loading)
 
   const [driveFilter, setDriveFilter] = useState<string>('all')
   const [collapsedDrives, setCollapsedDrives] = useState<Record<string, boolean>>({})
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number; width: number }>({
+    left: 10,
+    bottom: 60,
+    width: 204
+  })
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   const theme = config?.settings.theme ?? 'dark'
   const themeIndex = Math.max(0, themeChoices.findIndex((item) => item.id === theme))
@@ -134,6 +147,64 @@ export function Sidebar() {
     })
   }
 
+  const updateMenuPosition = () => {
+    const trigger = accountTriggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    if (sidebarCollapsed) {
+      setMenuPos({
+        left: rect.right + 8,
+        bottom: Math.max(10, window.innerHeight - rect.bottom),
+        width: 212
+      })
+    } else {
+      setMenuPos({
+        left: rect.left,
+        bottom: window.innerHeight - rect.top + 6,
+        width: Math.max(rect.width, 204)
+      })
+    }
+  }
+
+  const toggleMenu = () => {
+    if (!menuOpen) {
+      updateMenuPosition()
+      setMenuOpen(true)
+    } else {
+      setMenuOpen(false)
+    }
+  }
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || accountTriggerRef.current?.contains(target)) {
+        return
+      }
+      setMenuOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    const handleResize = () => updateMenuPosition()
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [menuOpen, sidebarCollapsed])
+
+  const accounts = config?.accounts ?? []
+  const menuHighlighted = menuOpen || accountsActive || settingsActive
+
   return (
     <aside
       className={cn(
@@ -201,21 +272,23 @@ export function Sidebar() {
 
           <div className="mt-auto flex flex-col items-center gap-1.5 border-t border-[var(--border)] px-1.5 py-2.5">
             <Tooltip
-              content={defaultAccount ? `账户 · ${defaultAccount.name}` : '账户管理（未配置）'}
+              content={defaultAccount ? `${defaultAccount.name} · 账户与设置` : '账户与设置'}
               side="right"
             >
               <button
+                ref={accountTriggerRef}
                 type="button"
-                aria-label="账户管理"
-                onClick={() => setActivePage('accounts')}
+                aria-label="账户与设置菜单"
+                aria-expanded={menuOpen}
+                onClick={toggleMenu}
                 className={cn(
                   'focus-ring relative flex h-9 w-full items-center justify-center rounded-md border transition-colors',
-                  accountsActive
+                  menuHighlighted
                     ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text-strong)]'
                     : 'border-[var(--border)] bg-[var(--panel)] text-[var(--text)] hover:border-[var(--border-strong)]'
                 )}
               >
-                {accountsActive ? (
+                {accountsActive || settingsActive ? (
                   <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[var(--accent)]" />
                 ) : null}
                 {defaultAccount ? (
@@ -225,30 +298,6 @@ export function Sidebar() {
                 ) : (
                   <Users className="h-4 w-4 text-[var(--faint)]" />
                 )}
-              </button>
-            </Tooltip>
-
-            <Tooltip content={`设置 · v${version}`} side="right">
-              <button
-                type="button"
-                aria-label="设置"
-                onClick={() => setActivePage('settings')}
-                className={cn(
-                  'focus-ring relative flex h-9 w-full items-center justify-center rounded-md border transition-colors',
-                  settingsActive
-                    ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text-strong)]'
-                    : 'border-transparent text-[var(--muted)] hover:bg-[var(--panel-soft)] hover:text-[var(--text)]'
-                )}
-              >
-                {settingsActive ? (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[var(--accent)]" />
-                ) : null}
-                <Settings2
-                  className={cn(
-                    'h-4 w-4',
-                    settingsActive ? 'text-[var(--accent)]' : 'text-[var(--faint)]'
-                  )}
-                />
               </button>
             </Tooltip>
 
@@ -482,40 +531,48 @@ export function Sidebar() {
           </div>
 
           <div className="shrink-0 space-y-2 border-t border-[var(--border)] p-2.5">
-            <Tooltip content="账户切换与管理" side="right">
-              <button
-                type="button"
-                onClick={() => setActivePage('accounts')}
-                className={cn(
-                  'focus-ring relative flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
-                  accountsActive
-                    ? 'border-[var(--accent-border)] bg-[var(--accent-soft)]'
-                    : 'border-[var(--border)] bg-[var(--panel)] hover:border-[var(--border-strong)]'
+            <button
+              ref={accountTriggerRef}
+              type="button"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={toggleMenu}
+              className={cn(
+                'focus-ring relative flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
+                menuHighlighted
+                  ? 'border-[var(--accent-border)] bg-[var(--accent-soft)]'
+                  : 'border-[var(--border)] bg-[var(--panel)] hover:border-[var(--border-strong)]'
+              )}
+            >
+              {accountsActive || settingsActive ? (
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[var(--accent)]" />
+              ) : null}
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[var(--accent-soft)] text-[11px] font-semibold text-[var(--accent)]">
+                {defaultAccount ? (
+                  initials(defaultAccount.githubUser || defaultAccount.name)
+                ) : (
+                  <Users className="h-3.5 w-3.5" />
                 )}
-              >
-                {accountsActive ? (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[var(--accent)]" />
-                ) : null}
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[var(--accent-soft)] text-[11px] font-semibold text-[var(--accent)]">
-                  {defaultAccount ? (
-                    initials(defaultAccount.githubUser || defaultAccount.name)
-                  ) : (
-                    <Users className="h-3.5 w-3.5" />
-                  )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-[var(--text-strong)]">
+                  {defaultAccount ? defaultAccount.name : '账户与设置'}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-[var(--text-strong)]">
-                    {defaultAccount ? defaultAccount.name : '账户管理'}
-                  </div>
-                  <div className="truncate text-[11px] text-[var(--faint)]">
-                    {defaultAccount ? (defaultAccount.authType === 'ssh' ? 'SSH' : 'HTTPS') : '未配置账户'}
-                  </div>
+                <div className="truncate text-[11px] text-[var(--faint)]">
+                  {defaultAccount
+                    ? `${defaultAccount.authType === 'ssh' ? 'SSH' : 'HTTPS'} · 菜单与设置`
+                    : '点击打开常用选项'}
                 </div>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--faint)]" />
-              </button>
-            </Tooltip>
+              </div>
+              <ChevronUp
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0 text-[var(--faint)] transition-transform duration-150',
+                  menuOpen && 'rotate-180 text-[var(--text)]'
+                )}
+              />
+            </button>
 
-            <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center justify-between gap-2 px-0.5">
               <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--panel)] p-0.5">
                 {themeChoices.map((item) => {
                   const Icon = item.icon
@@ -526,7 +583,7 @@ export function Sidebar() {
                         type="button"
                         onClick={() => updateSettings({ theme: item.id })}
                         className={cn(
-                          'focus-ring flex h-6 w-6 items-center justify-center rounded transition-colors',
+                          'focus-ring flex h-6 w-7 items-center justify-center rounded transition-colors',
                           active
                             ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                             : 'text-[var(--faint)] hover:text-[var(--text)]'
@@ -540,31 +597,153 @@ export function Sidebar() {
                 })}
               </div>
 
-              <Tooltip content={`设置 · v${version}`}>
-                <button
-                  type="button"
-                  onClick={() => setActivePage('settings')}
-                  aria-label="设置"
-                  className={cn(
-                    'focus-ring flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors',
-                    settingsActive
-                      ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text-strong)]'
-                      : 'border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-strong)]'
-                  )}
-                >
-                  <Settings2
-                    className={cn(
-                      'h-3.5 w-3.5 shrink-0',
-                      settingsActive ? 'text-[var(--accent)]' : 'text-[var(--faint)]'
-                    )}
-                  />
-                  <span>设置</span>
-                </button>
-              </Tooltip>
+              <span className="text-[11px] tabular-nums text-[var(--faint)]">v{version}</span>
             </div>
           </div>
         </>
       )}
+
+      {menuOpen
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{
+                left: menuPos.left,
+                bottom: menuPos.bottom,
+                width: menuPos.width,
+                boxShadow: 'var(--shadow-lg)'
+              }}
+              className="fixed z-[110] rounded-lg border border-[var(--border-strong)] bg-[var(--panel-solid)] p-1.5"
+            >
+              {accounts.length > 0 ? (
+                <div className="mb-1 border-b border-[var(--border)] pb-1">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--faint)]">
+                    默认账户
+                  </div>
+                  <div className="max-h-36 space-y-0.5 overflow-y-auto">
+                    {accounts.map((account) => {
+                      const isCurrent = defaultAccount?.id === account.id
+                      return (
+                        <button
+                          key={account.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            if (!isCurrent) void setDefaultAccount(account.id)
+                            setMenuOpen(false)
+                          }}
+                          className={cn(
+                            'focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                            isCurrent
+                              ? 'bg-[var(--accent-soft)] text-[var(--text-strong)]'
+                              : 'text-[var(--text)] hover:bg-[var(--panel-soft)]'
+                          )}
+                        >
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--panel-soft)] text-[10px] font-semibold text-[var(--accent)]">
+                            {initials(account.githubUser || account.name)}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{account.name}</span>
+                          {isCurrent ? <Check className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" /> : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActivePage('accounts')
+                    setMenuOpen(false)
+                  }}
+                  className={cn(
+                    'focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                    accountsActive
+                      ? 'bg-[var(--accent-soft)] font-medium text-[var(--text-strong)]'
+                      : 'text-[var(--text)] hover:bg-[var(--panel-soft)]'
+                  )}
+                >
+                  <Users className="h-3.5 w-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="min-w-0 flex-1">账户管理</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActivePage('repos')
+                    setMenuOpen(false)
+                  }}
+                  className={cn(
+                    'focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                    activePage === 'repos'
+                      ? 'bg-[var(--accent-soft)] font-medium text-[var(--text-strong)]'
+                      : 'text-[var(--text)] hover:bg-[var(--panel-soft)]'
+                  )}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="min-w-0 flex-1">仓库管理与批量切换</span>
+                  {repos.length > 0 ? (
+                    <span className="text-[11px] tabular-nums text-[var(--faint)]">{repos.length}</span>
+                  ) : null}
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    void scanRepos()
+                    setMenuOpen(false)
+                  }}
+                  className="focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--text)] transition-colors hover:bg-[var(--panel-soft)]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="min-w-0 flex-1">扫描仓库</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setPaletteOpen(true)
+                    setMenuOpen(false)
+                  }}
+                  className="focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--text)] transition-colors hover:bg-[var(--panel-soft)]"
+                >
+                  <Search className="h-3.5 w-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="min-w-0 flex-1">快速跳转</span>
+                  <span className="text-[10px] text-[var(--faint)]">Ctrl K</span>
+                </button>
+
+                <div className="my-1 border-t border-[var(--border)]" />
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActivePage('settings')
+                    setMenuOpen(false)
+                  }}
+                  className={cn(
+                    'focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                    settingsActive
+                      ? 'bg-[var(--accent-soft)] font-medium text-[var(--text-strong)]'
+                      : 'text-[var(--text)] hover:bg-[var(--panel-soft)]'
+                  )}
+                >
+                  <Settings2 className="h-3.5 w-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="min-w-0 flex-1">设置</span>
+                  <span className="text-[11px] tabular-nums text-[var(--faint)]">v{version}</span>
+                </button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </aside>
   )
 }
