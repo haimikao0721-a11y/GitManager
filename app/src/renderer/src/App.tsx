@@ -73,6 +73,7 @@ export default function App() {
   const activePage = useAppStore((state) => state.activePage)
   const setActivePage = useAppStore((state) => state.setActivePage)
   const toggleSidebar = useAppStore((state) => state.toggleSidebar)
+  const switchRepoTabByOffset = useAppStore((state) => state.switchRepoTabByOffset)
   const paletteOpen = useAppStore((state) => state.paletteOpen)
   const setPaletteOpen = useAppStore((state) => state.setPaletteOpen)
   const bootstrap = useAppStore((state) => state.bootstrap)
@@ -129,6 +130,22 @@ export default function App() {
         event.preventDefault()
         toggleSidebar()
       }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'PageUp') {
+        event.preventDefault()
+        void switchRepoTabByOffset(-1)
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'PageDown') {
+        event.preventDefault()
+        void switchRepoTabByOffset(1)
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === '[') {
+        event.preventDefault()
+        void switchRepoTabByOffset(-1)
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === ']') {
+        event.preventDefault()
+        void switchRepoTabByOffset(1)
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen(true)
@@ -142,7 +159,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [paletteOpen, setActivePage, setPaletteOpen, toggleSidebar])
+  }, [paletteOpen, setActivePage, setPaletteOpen, switchRepoTabByOffset, toggleSidebar])
 
   if (!config && loading.bootstrap) {
     return <BootScreen />
