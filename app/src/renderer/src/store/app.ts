@@ -11,6 +11,7 @@ import type {
   PageId,
   RepoInfo,
   RepoStatus,
+  RepoLockStatus,
   Settings,
   SshInfo,
   Stash,
@@ -59,6 +60,14 @@ function applyTheme(theme: Theme): void {
   window.api.setTheme(theme)
 }
 
+interface PendingMutation {
+  method: string
+  params: Record<string, unknown>
+  successTitle: string
+  options: { history?: boolean; refreshInfo?: boolean }
+  path: string
+}
+
 interface AppState {
   config: AppConfig | null
   system: SystemInfo | null
@@ -72,6 +81,8 @@ interface AppState {
   branches: Branch[]
   history: HistoryResult | null
   stashes: Stash[]
+  lockIssue: RepoLockStatus | null
+  pendingMutation: PendingMutation | null
   credentials: Credential[]
   ssh: SshInfo | null
   gitProxy: GitProxyState
@@ -100,6 +111,8 @@ interface AppState {
   refreshRepo: (options?: { history?: boolean }) => Promise<void>
   refreshHistory: (filter?: string) => Promise<void>
   refreshReposLight: () => Promise<void>
+  clearLockAndRetry: () => Promise<void>
+  dismissLock: () => void
 
   switchAccount: (accountId: string, protocol: 'https' | 'ssh') => Promise<boolean>
   switchAccounts: (
@@ -218,6 +231,20 @@ export const useAppStore = create<AppState>()((set, get) => {
       if (options.refreshInfo !== false) await refreshSelectedInfo()
       return true
     } catch (error) {
+      const message = errorMessage(error)
+      if (message.toLowerCase().includes('index.lock')) {
+        try {
+          const lock = await call<RepoLockStatus>('repo.lockStatus', { path })
+          if (lock.exists || !lock.writable) {
+            set({
+              lockIssue: lock,
+              pendingMutation: { method, params, successTitle, options, path }
+            })
+          }
+        } catch {
+          // Keep the original Git error if lock diagnostics fail.
+        }
+      }
       fail(error, successTitle + '失败')
       return false
     } finally {
@@ -238,6 +265,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     branches: [],
     history: null,
     stashes: [],
+    lockIssue: null,
+    pendingMutation: null,
     credentials: [],
     ssh: null,
     gitProxy: { http: '', https: '' },
@@ -444,6 +473,34 @@ export const useAppStore = create<AppState>()((set, get) => {
     refreshReposLight: async () => {
       await refreshSelectedInfo()
     },
+
+    clearLockAndRetry: async () => {
+      const pending = get().pendingMutation
+      if (!pending) return
+      setLoading('mutation', true)
+      try {
+        await call('repo.clearLock', { path: pending.path, force: true })
+        set({ lockIssue: null, pendingMutation: null })
+        await call(pending.method, { path: pending.path, ...pending.params })
+        get().toast('success', pending.successTitle)
+        await get().refreshRepo({ history: pending.options.history })
+        if (pending.options.refreshInfo !== false) await refreshSelectedInfo()
+      } catch (error) {
+        fail(error, '清理锁后重试失败')
+        try {
+          const lock = await call<RepoLockStatus>('repo.lockStatus', { path: pending.path })
+          if (lock.exists || !lock.writable) {
+            set({ lockIssue: lock, pendingMutation: pending })
+          }
+        } catch {
+          // Keep the retry error.
+        }
+      } finally {
+        setLoading('mutation', false)
+      }
+    },
+
+    dismissLock: () => set({ lockIssue: null, pendingMutation: null }),
 
     switchAccount: async (accountId, protocol) => {
       const path = requireRepo()

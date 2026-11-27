@@ -262,15 +262,17 @@ def main() -> int:
         readme.write_text(readme.read_text(encoding="utf-8") + "\nintegration test\n", encoding="utf-8")
 
         ready = threading.Event()
-        holder = threading.Thread(target=hold_index_lock, args=(repo, 0.8, ready), daemon=True)
+        holder = threading.Thread(target=hold_index_lock, args=(repo, 3.0, ready), daemon=True)
         holder.start()
         if not ready.wait(2):
             raise RuntimeError("index.lock holder did not start")
+        held_status = core.rpc("repo.lockStatus", {"path": str(repo)})
+        check(held_status["held"] is True, "held lock detected")
         stage_started = time.time()
         core.rpc("repo.stage", {"path": str(repo), "paths": ["README.md"]})
         stage_elapsed = time.time() - stage_started
         holder.join(timeout=3)
-        check(stage_elapsed >= 0.7, "stage retries index.lock")
+        check(stage_elapsed >= 2.5, "stage waits out a long index.lock")
         staged = core.rpc("repo.status", {"path": str(repo)})
         check(any(item["staged"] for item in staged["files"]), "stage file")
         core.rpc("repo.commit", {"path": str(repo), "message": "integration test commit"})
@@ -279,7 +281,7 @@ def main() -> int:
 
         target = git(repo, "rev-parse", "HEAD~1")
         ready = threading.Event()
-        holder = threading.Thread(target=hold_index_lock, args=(repo, 0.8, ready), daemon=True)
+        holder = threading.Thread(target=hold_index_lock, args=(repo, 3.0, ready), daemon=True)
         holder.start()
         if not ready.wait(2):
             raise RuntimeError("index.lock holder did not start")
@@ -320,6 +322,24 @@ def main() -> int:
         )
         after_unstage = core.rpc("repo.status", {"path": str(repo)})
         check(not any(item["staged"] for item in after_unstage["files"]), "patch unstages hunk")
+
+        readme.write_text(readme.read_text(encoding="utf-8") + "\nstale lock test\n", encoding="utf-8")
+        stale_lock = repo / ".git" / "index.lock"
+        stale_lock.write_text("", encoding="utf-8")
+        old_time = time.time() - 11 * 60
+        os.utime(stale_lock, (old_time, old_time))
+        lock_status = core.rpc("repo.lockStatus", {"path": str(repo)})
+        check(lock_status["exists"] is True, "lock status exists")
+        check(lock_status["stale"] is True, "lock status stale")
+        check(lock_status["held"] is False, "lock status not held")
+        check(lock_status["writable"] is True, "lock status writable")
+        cleared = core.rpc("repo.clearLock", {"path": str(repo), "force": False})
+        check(cleared["cleared"] is True, "clear stale index.lock")
+        core.rpc("repo.stage", {"path": str(repo), "paths": ["README.md"]})
+        check(
+            any((repo / ".git").glob("index.lock.stale-*")),
+            "stale index.lock backed up",
+        )
 
         with urllib.request.urlopen(core.base + "/", timeout=5) as response:
             html = response.read().decode()

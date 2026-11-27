@@ -1,6 +1,9 @@
 #include "git.hpp"
 
+#include <tlhelp32.h>
+
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -246,6 +249,62 @@ std::vector<std::string> SplitLines(const std::string& text) {
 
 namespace {
 
+fs::path GitDirForRepo(const std::string& repoPath) {
+    fs::path repo = PathFromUtf8(repoPath);
+    fs::path dotGit = repo / L".git";
+    std::error_code ec;
+    if (fs::is_directory(dotGit, ec)) return dotGit;
+    if (fs::is_regular_file(dotGit, ec)) {
+        std::string text = ReadFileUtf8(dotGit);
+        size_t pos = text.find("gitdir:");
+        if (pos != std::string::npos) {
+            fs::path gitDir = PathFromUtf8(Trim(text.substr(pos + 7)));
+            if (gitDir.is_relative()) gitDir = repo / gitDir;
+            return gitDir;
+        }
+    }
+    return {};
+}
+
+bool IsLockFileHeld(const fs::path& lock) {
+    HANDLE handle = CreateFileW(lock.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        return error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION;
+    }
+    CloseHandle(handle);
+    return false;
+}
+
+int CountGitProcesses() {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    int count = 0;
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"git.exe") == 0) ++count;
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return count;
+}
+
+bool IsGitDirWritable(const fs::path& gitDir) {
+    fs::path probe = gitDir /
+                     (L"git-manager-write-test-" + std::to_wstring(GetCurrentProcessId()) +
+                      L"-" + std::to_wstring(GetTickCount64()));
+    HANDLE handle = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_TEMPORARY, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    CloseHandle(handle);
+    std::error_code ec;
+    fs::remove(probe, ec);
+    return true;
+}
+
 GitResult RunGitOnce(const std::string& repoPath, const std::vector<std::string>& args,
                      bool allowPrompt, int timeoutMs) {
     std::vector<std::wstring> wide;
@@ -287,6 +346,67 @@ bool IsIndexLockError(const std::string& output) {
            lower.find("another git process") != std::string::npos;
 }
 
+json RepoLockStatusJson(const std::string& path) {
+    json result{
+        {"exists", false},
+        {"path", ""},
+        {"ageMs", 0},
+        {"held", false},
+        {"stale", false},
+        {"activeGit", CountGitProcesses()},
+        {"writable", false},
+        {"error", ""},
+    };
+    fs::path gitDir = GitDirForRepo(path);
+    if (gitDir.empty()) {
+        result["error"] = "找不到 .git 目录";
+        return result;
+    }
+    fs::path lock = gitDir / L"index.lock";
+    result["path"] = PathToUtf8(lock);
+    result["writable"] = IsGitDirWritable(gitDir);
+    std::error_code ec;
+    if (fs::exists(lock, ec)) {
+        result["exists"] = true;
+        result["held"] = IsLockFileHeld(lock);
+        auto written = fs::last_write_time(lock, ec);
+        if (!ec) {
+            auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           fs::file_time_type::clock::now() - written)
+                           .count();
+            if (age < 0) age = 0;
+            result["ageMs"] = age;
+            result["stale"] = age > 60000;
+        }
+    }
+    return result;
+}
+
+json ClearRepoLockJson(const std::string& path, bool force) {
+    fs::path gitDir = GitDirForRepo(path);
+    if (gitDir.empty()) throw std::runtime_error("找不到 .git 目录。");
+    fs::path lock = gitDir / L"index.lock";
+    std::error_code ec;
+    if (!fs::exists(lock, ec)) {
+        return json{{"cleared", false}, {"message", "index.lock 不存在"}};
+    }
+    if (IsLockFileHeld(lock)) {
+        throw std::runtime_error(
+            "index.lock 正被另一个 Git 进程持有，不能强制删除。请等待该操作结束后重试。");
+    }
+    fs::path backup = lock;
+    backup += L".stale-" + std::to_wstring(GetTickCount64());
+    fs::rename(lock, backup, ec);
+    if (ec) {
+        ec.clear();
+        fs::remove(lock, ec);
+        backup.clear();
+    }
+    if (ec) throw std::runtime_error("清理 index.lock 失败，请检查 .git 目录权限。");
+    (void)force;
+    return json{{"cleared", true}, {"backup", PathToUtf8(backup)}};
+}
+
 GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& args,
                  bool allowPrompt, int timeoutMs) {
     std::unique_lock<std::mutex> guard;
@@ -295,16 +415,20 @@ GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& ar
     }
 
     // A repository has one index.lock. Other Git clients (Cursor, PyCharm, a
-    // running `git status`) can hold it for a moment, so retry transient lock
-    // failures instead of failing the user's checkout/stage immediately.
-    constexpr int kMaxRetries = 4;
+    // running `git status`) can hold it for a moment, so wait/retry instead of
+    // failing the user's checkout/stage immediately.
+    constexpr int kMaxRetries = 9;
+    static const DWORD kDelaysMs[kMaxRetries] = {150, 300, 500, 800, 1200,
+                                                 1600, 2000, 2500, 3000};
     for (int attempt = 0;; ++attempt) {
         GitResult result = RunGitOnce(repoPath, args, allowPrompt, timeoutMs);
         if (result.ok || attempt >= kMaxRetries || !IsIndexLockError(result.output)) {
             return result;
         }
         if (guard.owns_lock()) guard.unlock();
-        Sleep(static_cast<DWORD>(150 * (1 << attempt)));
+        // Poll: another client may be mid-write. The UI offers an explicit
+        // "clear lock and retry" action if this wait is not enough.
+        Sleep(kDelaysMs[attempt]);
         if (guard.owns_lock() == false && !repoPath.empty()) guard.lock();
     }
 }

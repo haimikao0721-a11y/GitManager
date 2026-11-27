@@ -104,6 +104,23 @@ export interface DiffResult {
   error?: string
 }
 
+export interface RepoLockStatus {
+  exists: boolean
+  path: string
+  ageMs: number
+  held: boolean
+  stale: boolean
+  activeGit: number
+  writable: boolean
+  error?: string
+}
+
+export interface ClearLockResult {
+  cleared: boolean
+  backup?: string
+  message?: string
+}
+
 export interface Branch {
   refName: string
   shortName: string

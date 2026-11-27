@@ -85,6 +85,9 @@ export function WorkspacePage() {
   const checkoutTarget = useAppStore((state) => state.checkoutTarget)
   const resolveConflict = useAppStore((state) => state.resolveConflict)
   const switchAccount = useAppStore((state) => state.switchAccount)
+  const lockIssue = useAppStore((state) => state.lockIssue)
+  const clearLockAndRetry = useAppStore((state) => state.clearLockAndRetry)
+  const dismissLock = useAppStore((state) => state.dismissLock)
 
   const repo = repos.find((item) => item.path === selectedRepoPath)
   const accounts = config?.accounts ?? []
@@ -755,6 +758,71 @@ export function WorkspacePage() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(lockIssue)}
+        onOpenChange={(open) => {
+          if (!open) dismissLock()
+        }}
+        title="Git 锁未释放"
+        description="本次 Git 操作被仓库的 index.lock 阻止，已自动等待并重试。"
+        width="max-w-xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={dismissLock}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              loading={loading.mutation}
+              disabled={Boolean(lockIssue?.held) || lockIssue?.writable === false}
+              onClick={clearLockAndRetry}
+            >
+              清理 index.lock 并重试
+            </Button>
+          </>
+        }
+      >
+        {lockIssue ? (
+          <div className="space-y-2.5 text-xs">
+            <div className="code-font break-all rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2 text-[11px] text-[var(--muted)]">
+              {lockIssue.path || '未找到 .git/index.lock'}
+            </div>
+            {lockIssue.exists ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md border border-[var(--border)] px-3 py-2">
+                  <div className="text-[var(--faint)]">锁文件存在时间</div>
+                  <div className="mt-0.5 font-medium text-[var(--text)]">
+                    {Math.max(0, Math.round(lockIssue.ageMs / 1000))} 秒
+                  </div>
+                </div>
+                <div className="rounded-md border border-[var(--border)] px-3 py-2">
+                  <div className="text-[var(--faint)]">活跃 git 进程</div>
+                  <div className="mt-0.5 font-medium text-[var(--text)]">{lockIssue.activeGit} 个</div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2 text-[var(--warning)]">
+                锁文件不存在，但 Git 仍无法创建它。通常是 .git 目录只读、权限不足，或安全软件拦截写入。
+              </div>
+            )}
+            {lockIssue.held ? (
+              <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger)]">
+                另一个 Git 操作仍持有锁，暂不能清理。请等待 Cursor / PyCharm 的 Git 操作结束后再试。
+              </div>
+            ) : lockIssue.exists ? (
+              <div className="rounded-md border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2 text-[var(--muted)]">
+                当前没有 Git 进程持有该锁，可以安全地把它移到 `.git/index.lock.stale-*` 备份后重试。
+              </div>
+            ) : null}
+            {lockIssue.writable === false ? (
+              <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger)]">
+                无法在 .git 目录创建文件。请检查目录只读属性、ACL 权限，或安全软件是否拦截了写入。
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Dialog>
 
       <Dialog
         open={Boolean(diffTarget)}

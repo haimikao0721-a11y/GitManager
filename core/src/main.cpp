@@ -86,8 +86,19 @@ json RunChecked(const std::string& path, const std::vector<std::string>& args,
         std::string message = result.Text();
         if (message.empty()) message = "Git 命令失败（exit " + std::to_string(result.exitCode) + "）";
         if (IsIndexLockError(message)) {
-            message = "仓库正被另一个 Git 进程占用（index.lock）。\n"
-                      "请关闭 Cursor / PyCharm 等工具的 Git 操作，或稍后重试。\n\n" + message;
+            json lock = RepoLockStatusJson(path);
+            std::string reason;
+            if (lock.value("exists", false)) {
+                long long ageMs = lock.value("ageMs", 0LL);
+                reason = "检测到 index.lock（已存在 " + std::to_string(ageMs / 1000) +
+                         " 秒，held=" + (lock.value("held", false) ? "true" : "false") +
+                         "，活跃 git 进程 " + std::to_string(lock.value("activeGit", 0)) +
+                         " 个）：\n" + lock.value("path", std::string{});
+            } else {
+                reason = "Git 无法创建 index.lock，但锁文件并不存在。这通常不是 IDE 占用，"
+                         "而是 .git 目录只读/权限拒绝或安全软件拦截。";
+            }
+            message = reason + "\n已自动等待并重试。\n\n" + message;
         }
         throw std::runtime_error(message);
     }
@@ -207,6 +218,16 @@ json Dispatch(const std::string& method, const json& params) {
         EnsureRepo(path);
         return ApplyPatchJson(path, S(params, "patch"), B(params, "cached", true),
                               B(params, "reverse", false));
+    }
+    if (method == "repo.lockStatus") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoLockStatusJson(path);
+    }
+    if (method == "repo.clearLock") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return ClearRepoLockJson(path, B(params, "force", false));
     }
     if (method == "repo.branches") {
         std::string path = S(params, "path");

@@ -32,6 +32,8 @@ GitResult RunGit(const std::string& repoPath, const std::vector<std::string>& ar
                  bool allowPrompt = false, int timeoutMs = 180000);
 GitResult RunGitGlobal(const std::vector<std::string>& args, int timeoutMs = 30000);
 bool IsIndexLockError(const std::string& output);
+json RepoLockStatusJson(const std::string& path);
+json ClearRepoLockJson(const std::string& path, bool force);
 std::vector<std::string> SplitLines(const std::string& text);
 
 json RepoInfoJson(const std::string& path, const Config& config, bool includeStatus = false);
