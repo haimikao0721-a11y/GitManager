@@ -261,7 +261,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     selectedRepoPath: '',
     activePage: 'accounts',
     workspaceTab: 'changes',
-    historyFilter: 'current',
+    historyFilter: 'all',
     status: null,
     branches: [],
     history: null,
@@ -419,6 +419,7 @@ export const useAppStore = create<AppState>()((set, get) => {
       if (get().selectedRepoPath === path && get().status) return
       set({
         selectedRepoPath: path,
+        historyFilter: 'all',
         status: null,
         branches: [],
         stashes: [],
