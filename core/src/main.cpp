@@ -192,6 +192,22 @@ json Dispatch(const std::string& method, const json& params) {
         EnsureRepo(path);
         return RepoStatusJson(path);
     }
+    if (method == "repo.diff") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoDiffJson(path, B(params, "staged", false), S(params, "file"));
+    }
+    if (method == "repo.show") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return RepoShowJson(path, Trim(S(params, "hash")));
+    }
+    if (method == "repo.patch") {
+        std::string path = S(params, "path");
+        EnsureRepo(path);
+        return ApplyPatchJson(path, S(params, "patch"), B(params, "cached", true),
+                              B(params, "reverse", false));
+    }
     if (method == "repo.branches") {
         std::string path = S(params, "path");
         EnsureRepo(path);

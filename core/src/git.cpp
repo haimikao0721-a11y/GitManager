@@ -11,7 +11,7 @@ namespace gs {
 namespace {
 
 std::mutex g_repoLocksMutex;
-std::unordered_map<std::string, std::weak_ptr<std::mutex>> g_repoLocks;
+std::unordered_map<std::string, std::shared_ptr<std::mutex>> g_repoLocks;
 
 std::string RepoLockKey(const std::string& path) {
     std::string key = ToLower(Trim(path));
@@ -23,11 +23,8 @@ std::string RepoLockKey(const std::string& path) {
 std::shared_ptr<std::mutex> RepoLock(const std::string& path) {
     std::lock_guard<std::mutex> guard(g_repoLocksMutex);
     const std::string key = RepoLockKey(path);
-    std::shared_ptr<std::mutex> lock = g_repoLocks[key].lock();
-    if (!lock) {
-        lock = std::make_shared<std::mutex>();
-        g_repoLocks[key] = lock;
-    }
+    std::shared_ptr<std::mutex>& lock = g_repoLocks[key];
+    if (!lock) lock = std::make_shared<std::mutex>();
     return lock;
 }
 
@@ -362,6 +359,7 @@ json RepoInfoJson(const std::string& path, const Config& config, bool includeSta
     }
     if (remoteName.empty() && !remoteNames.empty()) remoteName = remoteNames.front();
     info["remoteName"] = remoteName;
+    const Account* matchedAccount = nullptr;
 
     if (!remoteName.empty()) {
         auto url = RunGit(path, {"remote", "get-url", remoteName}, false, 15000);
@@ -376,11 +374,20 @@ json RepoInfoJson(const std::string& path, const Config& config, bool includeSta
             info["isGitHub"] = remote.isGitHub;
             const Account* account = FindAccountForRemote(config, remote);
             if (account) {
+                matchedAccount = account;
                 info["accountId"] = account->id;
                 info["accountName"] = account->name;
             }
         }
     }
+
+    auto userName = Trim(RunGit(path, {"config", "--get", "user.name"}, false, 15000).output);
+    auto userEmail = Trim(RunGit(path, {"config", "--get", "user.email"}, false, 15000).output);
+    info["userName"] = userName;
+    info["userEmail"] = userEmail;
+    info["identityMismatch"] =
+        matchedAccount && !Trim(matchedAccount->email).empty() && !userEmail.empty() &&
+        !IEquals(userEmail, Trim(matchedAccount->email));
 
     std::string branch = Trim(RunGit(path, {"branch", "--show-current"}, false, 15000).output);
     if (branch.empty()) {
@@ -540,6 +547,86 @@ json RepoStatusJson(const std::string& path) {
     }
     result["files"] = files;
     return result;
+}
+
+json RepoDiffJson(const std::string& path, bool staged, const std::string& file) {
+    std::vector<std::string> args = {"diff", "--no-ext-diff", "--no-color", "--unified=3"};
+    if (staged) args.push_back("--cached");
+    args.push_back("--");
+    if (!file.empty()) args.push_back(file);
+    auto result = RunGit(path, args, false, 60000);
+    if (!result.ok) {
+        return json{{"diff", ""}, {"error", result.Text()}};
+    }
+    if (result.output.empty() && !staged && !file.empty()) {
+        auto fileStatus = RunGit(path, {"status", "--porcelain", "--", file}, false, 15000);
+        if (fileStatus.ok && StartsWith(Trim(fileStatus.output), "??")) {
+            auto untracked = RunGit(path,
+                                    {"diff", "--no-index", "--no-color", "--unified=3",
+                                     "--", "/dev/null", file},
+                                    false, 60000);
+            if (untracked.output.find("diff --git") != std::string::npos) {
+                return json{{"diff", untracked.output}};
+            }
+        }
+    }
+    return json{{"diff", result.output}};
+}
+
+json RepoShowJson(const std::string& path, const std::string& hash) {
+    static const std::regex hashPattern(R"(^[0-9a-fA-F]{4,40}$)");
+    if (!std::regex_match(hash, hashPattern)) {
+        throw std::runtime_error("无效的提交哈希。");
+    }
+    auto result = RunGit(path,
+                         {"show", "--no-ext-diff", "--no-color", "--unified=3",
+                          "--format=", hash, "--"},
+                         false, 120000);
+    if (!result.ok) {
+        return json{{"diff", ""}, {"error", result.Text()}};
+    }
+    return json{{"diff", result.output}};
+}
+
+json ApplyPatchJson(const std::string& path, const std::string& patch, bool cached,
+                    bool reverse) {
+    if (Trim(patch).empty()) {
+        throw std::runtime_error("补丁内容为空。");
+    }
+    std::error_code ec;
+    std::vector<fs::path> dirs;
+    dirs.push_back(fs::temp_directory_path(ec));
+    dirs.push_back(fs::current_path(ec));
+    dirs.push_back(PathFromUtf8(path) / L".git");
+    fs::path patchPath;
+    for (const auto& dir : dirs) {
+        if (dir.empty()) continue;
+        fs::path candidate = dir /
+                             ("git-manager-patch-" + std::to_string(GetCurrentProcessId()) +
+                              "-" + std::to_string(GetTickCount64()) + ".patch");
+        std::ofstream file(candidate, std::ios::binary | std::ios::trunc);
+        if (!file) continue;
+        file.write(patch.data(), static_cast<std::streamsize>(patch.size()));
+        if (!patch.empty() && patch.back() != '\n') file.put('\n');
+        if (file) {
+            patchPath = candidate;
+            break;
+        }
+        file.close();
+        std::error_code removeError;
+        fs::remove(candidate, removeError);
+    }
+    if (patchPath.empty()) throw std::runtime_error("无法创建临时补丁文件。");
+
+    std::vector<std::string> args = {"apply", "--unidiff-zero", "--whitespace=nowarn"};
+    if (cached) args.push_back("--cached");
+    if (reverse) args.push_back("--reverse");
+    args.push_back(PathToUtf8(patchPath));
+    auto result = RunGit(path, args, false, 60000);
+    std::error_code removeError;
+    fs::remove(patchPath, removeError);
+    if (!result.ok) throw std::runtime_error(result.Text());
+    return json{{"output", result.Text()}};
 }
 
 json RepoBranchesJson(const std::string& path) {

@@ -53,6 +53,29 @@ export default function App() {
   }, [activePage, refreshHistory, refreshRepo, selectedRepoPath, workspaceTab])
 
   useEffect(() => {
+    let timer = 0
+    const refresh = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        const state = useAppStore.getState()
+        if (state.activePage !== 'workspace' || !state.selectedRepoPath) return
+        if (state.loading.mutation) return
+        void state.refreshRepo({ history: state.workspaceTab === 'history' })
+      }, 450)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()

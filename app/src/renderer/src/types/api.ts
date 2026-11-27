@@ -72,6 +72,9 @@ export interface RepoInfo {
   ahead: number
   behind: number
   hasConflicts?: boolean
+  userName: string
+  userEmail: string
+  identityMismatch: boolean
 }
 
 export interface StatusFile {
@@ -93,6 +96,11 @@ export interface RepoStatus {
   behind: number
   files: StatusFile[]
   hasConflicts: boolean
+  error?: string
+}
+
+export interface DiffResult {
+  diff: string
   error?: string
 }
 

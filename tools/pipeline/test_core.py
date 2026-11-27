@@ -291,6 +291,36 @@ def main() -> int:
         check(git(repo, "rev-parse", "HEAD") == target, "checkout target applied")
         core.rpc("repo.branch.switch", {"path": str(repo), "name": "main"})
 
+        commit_hash = git(repo, "rev-parse", "HEAD")
+        shown = core.rpc("repo.show", {"path": str(repo), "hash": commit_hash})
+        check("diff --git" in shown["diff"], "commit diff shown")
+        check("integration test" in shown["diff"], "commit diff content")
+
+        git(repo, "config", "user.email", "wrong@example.com")
+        identity = core.rpc("repo.info", {"path": str(repo), "includeStatus": False})
+        check(identity["identityMismatch"] is True, "identity mismatch detected")
+        git(repo, "config", "user.email", "integration@example.com")
+
+        readme.write_text(readme.read_text(encoding="utf-8") + "\nstage by patch\n", encoding="utf-8")
+        working_diff = core.rpc("repo.diff", {"path": str(repo), "file": "README.md"})["diff"]
+        check("diff --git" in working_diff, "working diff shown")
+        core.rpc(
+            "repo.patch",
+            {"path": str(repo), "patch": working_diff, "cached": True, "reverse": False},
+        )
+        patch_status = core.rpc("repo.status", {"path": str(repo)})
+        check(any(item["staged"] for item in patch_status["files"]), "patch stages hunk")
+        staged_diff = core.rpc(
+            "repo.diff", {"path": str(repo), "staged": True, "file": "README.md"}
+        )["diff"]
+        check("stage by patch" in staged_diff, "staged diff shown")
+        core.rpc(
+            "repo.patch",
+            {"path": str(repo), "patch": staged_diff, "cached": True, "reverse": True},
+        )
+        after_unstage = core.rpc("repo.status", {"path": str(repo)})
+        check(not any(item["staged"] for item in after_unstage["files"]), "patch unstages hunk")
+
         with urllib.request.urlopen(core.base + "/", timeout=5) as response:
             html = response.read().decode()
         check("Git管理器" in html, "static index served")

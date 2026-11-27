@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, ExternalLink, GitBranch, GitCommitHorizontal, RotateCcw } from 'lucide-react'
+import { Check, Copy, ExternalLink, FileDiff, GitBranch, GitCommitHorizontal, RotateCcw } from 'lucide-react'
 import { useAppStore } from '@/store/app'
 import type { HistoryRow } from '@/types/api'
 import {
   Button,
   Card,
   ContextMenu,
+  Dialog,
   EmptyState,
   Select,
   Skeleton,
   Tooltip,
   type ContextMenuItem
 } from '@/components/ui'
+import { DiffView } from '@/components/DiffView'
 import { cn, copyText, graphColor, parseDecorations } from '@/lib/utils'
 
 const ROW_HEIGHT = 44
@@ -30,6 +32,7 @@ export function HistoryView() {
   const repo = repos.find((item) => item.path === selectedRepoPath)
   const rows = history?.rows ?? []
   const [selectedHash, setSelectedHash] = useState('')
+  const [diffHash, setDiffHash] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -170,6 +173,11 @@ export function HistoryView() {
                         y: event.clientY,
                         items: [
                           {
+                            label: '查看改动',
+                            icon: <FileDiff className="h-3.5 w-3.5" />,
+                            onSelect: () => setDiffHash(row.hash)
+                          },
+                          {
                             label: `签出到此节点 (${row.hash})`,
                             icon: <RotateCcw className="h-3.5 w-3.5" />,
                             onSelect: () => checkoutTarget(row.hash)
@@ -216,7 +224,25 @@ export function HistoryView() {
         )}
       </Card>
 
-      <CommitDetails row={selectedRow} repo={repo} onSelect={setSelectedHash} />
+      <CommitDetails
+        row={selectedRow}
+        repo={repo}
+        onSelect={setSelectedHash}
+        onViewDiff={() => {
+          if (selectedRow) setDiffHash(selectedRow.hash)
+        }}
+      />
+      <Dialog
+        open={Boolean(diffHash)}
+        onOpenChange={(open) => {
+          if (!open) setDiffHash('')
+        }}
+        title={`提交改动 · ${diffHash.slice(0, 12)}`}
+        description="该提交相对父提交的完整差异。"
+        width="max-w-[min(1240px,96vw)]"
+      >
+        {diffHash ? <DiffView repoPath={repo.path} commit={diffHash} /> : null}
+      </Dialog>
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )
@@ -338,11 +364,13 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
 function CommitDetails({
   row,
   repo,
-  onSelect
+  onSelect,
+  onViewDiff
 }: {
   row: HistoryRow | null
-  repo: { url: string; name: string }
+  repo: { url: string; name: string; path: string }
   onSelect: (hash: string) => void
+  onViewDiff: () => void
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -366,6 +394,11 @@ function CommitDetails({
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-4 py-2.5">
         <GitCommitHorizontal className="h-4 w-4 text-[var(--accent)]" />
         <span className="text-[13px] font-semibold text-[var(--text-strong)]">提交详情</span>
+        {row ? (
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={onViewDiff}>
+            <FileDiff className="h-3.5 w-3.5" /> 查看改动
+          </Button>
+        ) : null}
       </div>
       {!row ? (
         <EmptyState

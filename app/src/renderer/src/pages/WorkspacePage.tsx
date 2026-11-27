@@ -10,6 +10,7 @@ import {
   Code2,
   Copy,
   Download,
+  FileDiff,
   FileText,
   FolderOpen,
   GitBranch,
@@ -45,6 +46,7 @@ import {
   type ContextMenuItem
 } from '@/components/ui'
 import { HistoryView } from '@/components/HistoryView'
+import { DiffView } from '@/components/DiffView'
 import { cn, copyText, parseDecorations, shortPath } from '@/lib/utils'
 
 interface ConfirmState {
@@ -95,6 +97,7 @@ export function WorkspacePage() {
   const [stashMessage, setStashMessage] = useState('')
   const [stashUntracked, setStashUntracked] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  const [diffTarget, setDiffTarget] = useState<{ file: StatusFile; mode: 'unstaged' | 'staged' } | null>(null)
   const [accountId, setAccountId] = useState('')
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https')
 
@@ -469,6 +472,29 @@ export function WorkspacePage() {
           </div>
         ) : null}
 
+        {repo.identityMismatch ? (
+          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2.5 rounded-md border border-[var(--warning-border)] bg-[var(--warning-soft)] px-3.5 py-2.5 text-xs text-[var(--warning)]">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">本地提交身份与仓库绑定账号不一致</div>
+              <div className="mt-0.5 text-[11px] opacity-90">
+                本地：{repo.userName || '未设置'} &lt;{repo.userEmail || '未设置'}&gt;
+                {' · '}仓库账号：{repo.accountName || '未匹配'}
+              </div>
+            </div>
+            {repo.accountId ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={loading.mutation}
+                onClick={() => switchAccount(repo.accountId, protocol)}
+              >
+                使用账号身份
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
         {workspaceTab === 'history' ? (
           <HistoryView />
         ) : (
@@ -558,6 +584,12 @@ export function WorkspacePage() {
                         file={file}
                         onStage={() => stageFiles([file.path])}
                         onUnstage={() => unstageFiles([file.path])}
+                        onOpenDiff={() =>
+                          setDiffTarget({
+                            file,
+                            mode: file.unstaged || file.untracked ? 'unstaged' : 'staged'
+                          })
+                        }
                         onDiscard={() => requestDiscard(file)}
                         onResolve={(side) => resolveConflict(file.path, side)}
                         disabled={loading.mutation}
@@ -723,6 +755,29 @@ export function WorkspacePage() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(diffTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDiffTarget(null)
+        }}
+        title={diffTarget ? `Diff · ${diffTarget.file.displayPath}` : 'Diff'}
+        description={diffTarget ? '查看改动，或只暂存其中一段。' : undefined}
+        width="max-w-[min(1240px,96vw)]"
+      >
+        {diffTarget ? (
+          <DiffView
+            repoPath={repo.path}
+            file={diffTarget.file.path}
+            initialMode={diffTarget.mode}
+            unstagedAvailable={diffTarget.file.unstaged || diffTarget.file.untracked}
+            stagedAvailable={diffTarget.file.staged}
+            onChanged={async () => {
+              await refreshRepo()
+            }}
+          />
+        ) : null}
+      </Dialog>
 
       <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
 
@@ -1000,6 +1055,7 @@ function FileRow({
   file,
   onStage,
   onUnstage,
+  onOpenDiff,
   onDiscard,
   onResolve,
   disabled = false
@@ -1007,6 +1063,7 @@ function FileRow({
   file: StatusFile
   onStage: () => void
   onUnstage: () => void
+  onOpenDiff: () => void
   onDiscard: () => void
   onResolve: (side: 'ours' | 'theirs') => void
   disabled?: boolean
@@ -1031,6 +1088,11 @@ function FileRow({
       </div>
       <Badge variant={variant}>{file.label}</Badge>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <Tooltip content="查看 Diff">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onOpenDiff}>
+            <FileDiff className="h-3.5 w-3.5" />
+          </Button>
+        </Tooltip>
         {file.conflicted ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => onResolve('ours')} disabled={disabled}>
