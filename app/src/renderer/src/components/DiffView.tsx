@@ -259,7 +259,7 @@ export function DiffView({
                 {section.header.map((line, index) => (
                   <div
                     key={`h-${index}`}
-                    className="whitespace-pre border-b border-[var(--border)]/40 bg-[var(--panel-soft)] px-3 py-0.5 text-[var(--faint)]"
+                    className="whitespace-pre border-b border-[var(--border)] bg-[var(--panel-soft)] px-3 py-0.5 text-[var(--faint)]"
                   >
                     {line}
                   </div>

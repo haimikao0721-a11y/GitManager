@@ -23,7 +23,7 @@ export function TitleBar() {
   const repo = repos.find((item) => item.path === selectedRepoPath)
 
   return (
-    <header className="titlebar-drag relative z-40 flex h-10 shrink-0 items-center gap-2.5 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-2.5">
+    <header className="titlebar-drag relative z-40 flex h-10 shrink-0 items-center gap-2.5 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3.5">
       <Tooltip content={sidebarCollapsed ? '展开左侧栏 (Ctrl+B)' : '收起左侧栏 (Ctrl+B)'} side="bottom">
         <Button
           variant="ghost"
