@@ -1,0 +1,39 @@
+# Build outputs
+core/build/
+app/out/
+dist/
+release/
+*.exe
+*.dll
+*.obj
+*.o
+*.a
+*.lib
+*.lnk
+*.zip
+*.7z
+
+# Runtime data / profiles / backups
+data/
+**/data/
+browser-profile/
+backups/
+logs/
+*.log
+
+# Node
+app/node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
