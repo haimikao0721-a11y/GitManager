@@ -16,6 +16,7 @@ import {
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
+  PanelRight,
   Play,
   RefreshCw,
   RotateCcw,
@@ -47,6 +48,7 @@ import {
 } from '@/components/ui'
 import { HistoryView } from '@/components/HistoryView'
 import { DiffView } from '@/components/DiffView'
+import { SideInspectorPanel } from '@/components/SideInspectorPanel'
 import { cn, copyText, parseDecorations, shortPath } from '@/lib/utils'
 
 interface ConfirmState {
@@ -85,6 +87,12 @@ export function WorkspacePage() {
   const checkoutTarget = useAppStore((state) => state.checkoutTarget)
   const resolveConflict = useAppStore((state) => state.resolveConflict)
   const switchAccount = useAppStore((state) => state.switchAccount)
+  const inspectorOpen = useAppStore((state) => state.inspectorOpen)
+  const inspectorWidth = useAppStore((state) => state.inspectorWidth)
+  const toggleInspector = useAppStore((state) => state.toggleInspector)
+  const setInspectorTab = useAppStore((state) => state.setInspectorTab)
+  const selectedWorkFile = useAppStore((state) => state.selectedWorkFile)
+  const setSelectedWorkFile = useAppStore((state) => state.setSelectedWorkFile)
   const lockIssue = useAppStore((state) => state.lockIssue)
   const clearLockAndRetry = useAppStore((state) => state.clearLockAndRetry)
   const dismissLock = useAppStore((state) => state.dismissLock)
@@ -192,13 +200,17 @@ export function WorkspacePage() {
   )
 
   useEffect(() => {
-    if (!inspectedBranch) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !contextMenu) setInspectedBranch(null)
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        toggleInspector()
+        return
+      }
+      if (inspectedBranch && event.key === 'Escape' && !contextMenu) setInspectedBranch(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [contextMenu, inspectedBranch])
+  }, [contextMenu, inspectedBranch, toggleInspector])
 
   const localBranches = useMemo(() => branches.filter((branch) => branch.type === 'local'), [branches])
   const remoteBranches = useMemo(() => branches.filter((branch) => branch.type === 'remote'), [branches])
@@ -446,7 +458,12 @@ export function WorkspacePage() {
             <FileRow
               key={`${mode}:${file.xy}:${file.path}`}
               file={file}
+              active={selectedWorkFile?.path === file.path && selectedWorkFile?.mode === mode}
               selected={selected.has(file.path)}
+              onSelect={() => {
+                setSelectedWorkFile({ path: file.path, mode })
+                if (inspectorOpen) setInspectorTab('changes')
+              }}
               onSelectedChange={() => onToggle(file.path)}
               selectable={selectable}
               onOpenDiff={() => setDiffTarget({ file, mode })}
@@ -461,8 +478,9 @@ export function WorkspacePage() {
   )
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto xl:overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col px-6 py-5 xl:min-h-0">
+    <div className="flex h-full min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto xl:overflow-hidden">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col px-6 py-5 xl:min-h-0">
         <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -586,6 +604,18 @@ export function WorkspacePage() {
                 <FolderOpen className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
+            <span className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+            <Tooltip content={inspectorOpen ? '收起右侧面板 (Ctrl+Shift+B)' : '展开右侧面板 (Ctrl+Shift+B)'}>
+              <Button
+                variant={inspectorOpen ? 'secondary' : 'ghost'}
+                size="icon"
+                aria-label="切换右侧面板"
+                aria-pressed={inspectorOpen}
+                onClick={toggleInspector}
+              >
+                <PanelRight className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
           </div>
         </div>
 
@@ -622,7 +652,16 @@ export function WorkspacePage() {
         {workspaceTab === 'history' ? (
           <HistoryView />
         ) : (
-          <div className="relative grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+          <div
+            className={cn(
+              'relative grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1',
+              !inspectorOpen
+                ? 'xl:grid-cols-[240px_minmax(0,1fr)_300px]'
+                : inspectorWidth >= 560
+                  ? 'min-[1580px]:grid-cols-[190px_minmax(0,1fr)_230px]'
+                  : 'min-[1500px]:grid-cols-[210px_minmax(0,1fr)_250px] xl:grid-cols-[185px_minmax(0,1fr)_225px]'
+            )}
+          >
             <Card className="flex min-h-[300px] flex-col xl:min-h-0">
               <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3.5 py-2.5">
                 <div className="flex items-center gap-2">
@@ -1075,6 +1114,14 @@ export function WorkspacePage() {
       >
         {null}
       </Dialog>
+      </div>
+
+      {inspectorOpen ? (
+        <SideInspectorPanel
+          onCreateBranchFromCommit={(hash) => startCreateBranch(hash)}
+          onOpenFileModal={(file, mode) => setDiffTarget({ file, mode })}
+        />
+      ) : null}
     </div>
   )
 }
@@ -1282,7 +1329,9 @@ function BranchNodesPanel({
 
 function FileRow({
   file,
+  active = false,
   selected,
+  onSelect,
   onSelectedChange,
   selectable = true,
   onOpenDiff,
@@ -1291,7 +1340,9 @@ function FileRow({
   disabled = false
 }: {
   file: StatusFile
+  active?: boolean
   selected: boolean
+  onSelect: () => void
   onSelectedChange: () => void
   selectable?: boolean
   onOpenDiff: () => void
@@ -1307,12 +1358,19 @@ function FileRow({
         ? 'success'
         : 'warning'
   return (
-    <div className="group flex items-center gap-2.5 px-4 py-2 hover:bg-[var(--panel-soft)]">
+    <div
+      onClick={onSelect}
+      className={cn(
+        'group flex cursor-pointer items-center gap-2.5 px-4 py-2 transition-colors',
+        active ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-soft)]'
+      )}
+    >
       {selectable ? (
         <input
           type="checkbox"
           className="h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
           checked={selected}
+          onClick={(event) => event.stopPropagation()}
           onChange={onSelectedChange}
           disabled={disabled}
           aria-label={`选择 ${file.displayPath}`}
@@ -1330,7 +1388,10 @@ function FileRow({
         </div>
       </div>
       <Badge variant={variant}>{file.label}</Badge>
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div
+        className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={(event) => event.stopPropagation()}
+      >
         <Tooltip content="查看 Diff">
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onOpenDiff}>
             <FileDiff className="h-3.5 w-3.5" />

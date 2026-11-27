@@ -1,6 +1,7 @@
 export type Theme = 'dark' | 'light' | 'sepia'
 export type PageId = 'accounts' | 'repos' | 'workspace' | 'settings'
 export type WorkspaceTab = 'changes' | 'history'
+export type InspectorTab = 'commit' | 'changes' | 'tree'
 export type AuthType = 'https' | 'ssh'
 
 export interface Account {
@@ -259,4 +260,54 @@ export interface ToastItem {
   title: string
   description?: string
   kind: 'success' | 'error' | 'info'
+}
+
+export interface CommitFileChange {
+  status: string
+  label: string
+  path: string
+  oldPath: string
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
+export interface CommitDetailsResult {
+  empty?: boolean
+  hash: string
+  shortHash: string
+  author: string
+  email: string
+  date: string
+  subject: string
+  body: string
+  files: CommitFileChange[]
+  fileCount: number
+  totalAdditions: number
+  totalDeletions: number
+  error?: string
+}
+
+export interface RepoTreeEntry {
+  path: string
+  size: number
+}
+
+export interface RepoTreeResult {
+  ref: string
+  entries: RepoTreeEntry[]
+  fileCount: number
+  totalSize: number
+  truncated: boolean
+  error?: string
+}
+
+export interface RepoFileResult {
+  path: string
+  ref: string
+  content: string
+  binary?: boolean
+  truncated?: boolean
+  size?: number
+  error?: string
 }

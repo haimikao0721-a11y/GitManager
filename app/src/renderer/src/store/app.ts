@@ -8,6 +8,7 @@ import type {
   GitHubUser,
   GitProxyState,
   HistoryResult,
+  InspectorTab,
   PageId,
   RepoInfo,
   RepoStatus,
@@ -77,6 +78,12 @@ interface AppState {
   activePage: PageId
   workspaceTab: WorkspaceTab
   historyFilter: string
+  inspectorOpen: boolean
+  inspectorTab: InspectorTab
+  inspectorWidth: number
+  selectedCommitHash: string
+  selectedCommitFile: string
+  selectedWorkFile: { path: string; mode: 'unstaged' | 'staged' } | null
   status: RepoStatus | null
   branches: Branch[]
   history: HistoryResult | null
@@ -95,6 +102,13 @@ interface AppState {
   bootstrap: () => Promise<void>
   setActivePage: (page: PageId) => void
   setWorkspaceTab: (tab: WorkspaceTab) => void
+  setInspectorOpen: (open: boolean) => void
+  toggleInspector: () => void
+  setInspectorTab: (tab: InspectorTab) => void
+  setInspectorWidth: (width: number) => void
+  setSelectedCommitHash: (hash: string) => void
+  setSelectedCommitFile: (file: string) => void
+  setSelectedWorkFile: (file: { path: string; mode: 'unstaged' | 'staged' } | null) => void
   setPaletteOpen: (open: boolean) => void
   toast: (kind: ToastItem['kind'], title: string, description?: string) => void
   dismissToast: (id: number) => void
@@ -262,6 +276,12 @@ export const useAppStore = create<AppState>()((set, get) => {
     activePage: 'accounts',
     workspaceTab: 'changes',
     historyFilter: 'all',
+    inspectorOpen: true,
+    inspectorTab: 'commit',
+    inspectorWidth: 440,
+    selectedCommitHash: '',
+    selectedCommitFile: '',
+    selectedWorkFile: null,
     status: null,
     branches: [],
     history: null,
@@ -314,6 +334,14 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     setActivePage: (page) => set({ activePage: page }),
     setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+    setInspectorOpen: (open) => set({ inspectorOpen: open }),
+    toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),
+    setInspectorTab: (tab) => set({ inspectorTab: tab }),
+    setInspectorWidth: (width) =>
+      set({ inspectorWidth: Math.max(320, Math.min(760, Math.round(width))) }),
+    setSelectedCommitHash: (hash) => set({ selectedCommitHash: hash, selectedCommitFile: '' }),
+    setSelectedCommitFile: (file) => set({ selectedCommitFile: file }),
+    setSelectedWorkFile: (file) => set({ selectedWorkFile: file }),
     setPaletteOpen: (open) => set({ paletteOpen: open }),
 
     refreshConfig: async () => {
@@ -420,6 +448,9 @@ export const useAppStore = create<AppState>()((set, get) => {
       set({
         selectedRepoPath: path,
         historyFilter: 'all',
+        selectedCommitHash: '',
+        selectedCommitFile: '',
+        selectedWorkFile: null,
         status: null,
         branches: [],
         stashes: [],
