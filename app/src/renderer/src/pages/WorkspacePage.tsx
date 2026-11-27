@@ -65,7 +65,6 @@ interface ConfirmState {
 export function WorkspacePage() {
   const repos = useAppStore((state) => state.repos)
   const selectedRepoPath = useAppStore((state) => state.selectedRepoPath)
-  const selectRepo = useAppStore((state) => state.selectRepo)
   const config = useAppStore((state) => state.config)
   const status = useAppStore((state) => state.status)
   const branches = useAppStore((state) => state.branches)
@@ -240,7 +239,6 @@ export function WorkspacePage() {
 
   const localBranches = useMemo(() => branches.filter((branch) => branch.type === 'local'), [branches])
   const remoteBranches = useMemo(() => branches.filter((branch) => branch.type === 'remote'), [branches])
-  const currentAccount = accounts.find((account) => account.id === (repo?.accountId || accountId))
   const previewAccount = accounts.find((account) => account.id === accountId)
   const previewOwner = repo?.owner ?? ''
   const previewRepo = repo?.repo ?? ''
@@ -508,19 +506,66 @@ export function WorkspacePage() {
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] bg-[var(--panel-solid)]/70 px-5 py-2.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="w-[188px]">
-            <Select
-              value={selectedRepoPath}
-              onChange={(event) => selectRepo(event.target.value)}
-              aria-label="切换仓库"
-              className="h-8 font-semibold text-[var(--text-strong)]"
+          <div
+            title={
+              repo.userName || repo.userEmail
+                ? `当前仓库局部 Git 身份：${repo.userName || '未设置'} <${repo.userEmail || '未设置'}>\n仅修改当前仓库配置，不影响全局默认账号`
+                : '切换当前仓库的局部 Git 身份与远程协议'
+            }
+            className={cn(
+              'inline-flex h-8 items-center gap-1 rounded-md border bg-[var(--panel-soft)] px-2 text-xs transition-colors',
+              repo.identityMismatch
+                ? 'border-[var(--warning-border)] text-[var(--warning)]'
+                : 'border-[var(--border)] hover:border-[var(--border-strong)]'
+            )}
+          >
+            <UserRound
+              className={cn(
+                'h-3.5 w-3.5 shrink-0',
+                repo.identityMismatch ? 'text-[var(--warning)]' : 'text-[var(--faint)]'
+              )}
+            />
+            <select
+              aria-label="当前仓库 Git 身份切换"
+              disabled={loading.mutation || accounts.length === 0}
+              value={repo.accountId || ''}
+              onChange={(event) => {
+                const nextId = event.target.value
+                if (!nextId) return
+                setAccountId(nextId)
+                void switchAccount(nextId, protocol)
+              }}
+              className="focus-ring max-w-[168px] cursor-pointer appearance-none truncate bg-transparent pr-1 font-medium text-[var(--text-strong)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {repos.map((item) => (
-                <option key={item.path} value={item.path}>
-                  {item.name}
+              {!repo.accountId ? (
+                <option value="" className="bg-[var(--panel-solid)] text-[var(--text)]">
+                  {accounts.length === 0 ? '未配置账号' : '选择本地身份…'}
+                </option>
+              ) : null}
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id} className="bg-[var(--panel-solid)] text-[var(--text)]">
+                  {account.name}
                 </option>
               ))}
-            </Select>
+            </select>
+            <ChevronDown className="pointer-events-none -ml-1 h-3 w-3 shrink-0 text-[var(--faint)]" />
+            {accounts.length > 0 ? (
+              <button
+                type="button"
+                disabled={loading.mutation || !(repo.accountId || accountId)}
+                onClick={() => {
+                  const targetId = repo.accountId || accountId
+                  if (!targetId) return
+                  const nextProto = protocol === 'ssh' ? 'https' : 'ssh'
+                  setProtocol(nextProto)
+                  void switchAccount(targetId, nextProto)
+                }}
+                title="切换当前仓库远程协议 (HTTPS / SSH)"
+                className="focus-ring ml-0.5 rounded border border-[var(--border)] bg-[var(--panel)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-strong)] disabled:opacity-50"
+              >
+                {protocol.toUpperCase()}
+              </button>
+            ) : null}
           </div>
           <Badge variant={branchLabel === 'detached' ? 'warning' : 'outline'}>
             <GitBranch className="h-3 w-3" />
@@ -540,11 +585,6 @@ export function WorkspacePage() {
           <span className="code-font hidden text-xs text-[var(--faint)] min-[1280px]:inline" title={repo.path}>
             {shortPath(repo.path, 48)}
           </span>
-          {currentAccount ? (
-            <span className="hidden items-center gap-1 text-xs text-[var(--muted)] lg:inline-flex">
-              <UserRound className="h-3 w-3" /> {currentAccount.name}
-            </span>
-          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
