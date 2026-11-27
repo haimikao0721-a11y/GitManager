@@ -112,6 +112,7 @@ export interface RepoLockStatus {
   stale: boolean
   activeGit: number
   writable: boolean
+  writeError: number
   error?: string
 }
 

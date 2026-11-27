@@ -818,6 +818,7 @@ export function WorkspacePage() {
             {lockIssue.writable === false ? (
               <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger)]">
                 无法在 .git 目录创建文件。请检查目录只读属性、ACL 权限，或安全软件是否拦截了写入。
+                {lockIssue.writeError ? `（Win32 错误 ${lockIssue.writeError}）` : ''}
               </div>
             ) : null}
           </div>

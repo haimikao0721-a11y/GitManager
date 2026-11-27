@@ -292,16 +292,20 @@ int CountGitProcesses() {
     return count;
 }
 
-bool IsGitDirWritable(const fs::path& gitDir) {
+bool IsGitDirWritable(const fs::path& gitDir, DWORD* error = nullptr) {
     fs::path probe = gitDir /
                      (L"git-manager-write-test-" + std::to_wstring(GetCurrentProcessId()) +
                       L"-" + std::to_wstring(GetTickCount64()));
     HANDLE handle = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                 FILE_ATTRIBUTE_TEMPORARY, nullptr);
-    if (handle == INVALID_HANDLE_VALUE) return false;
+    if (handle == INVALID_HANDLE_VALUE) {
+        if (error) *error = GetLastError();
+        return false;
+    }
     CloseHandle(handle);
     std::error_code ec;
     fs::remove(probe, ec);
+    if (error) *error = 0;
     return true;
 }
 
@@ -355,6 +359,7 @@ json RepoLockStatusJson(const std::string& path) {
         {"stale", false},
         {"activeGit", CountGitProcesses()},
         {"writable", false},
+        {"writeError", 0},
         {"error", ""},
     };
     fs::path gitDir = GitDirForRepo(path);
@@ -364,7 +369,9 @@ json RepoLockStatusJson(const std::string& path) {
     }
     fs::path lock = gitDir / L"index.lock";
     result["path"] = PathToUtf8(lock);
-    result["writable"] = IsGitDirWritable(gitDir);
+    DWORD writeError = 0;
+    result["writable"] = IsGitDirWritable(gitDir, &writeError);
+    result["writeError"] = writeError;
     std::error_code ec;
     if (fs::exists(lock, ec)) {
         result["exists"] = true;
