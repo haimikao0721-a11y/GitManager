@@ -212,8 +212,8 @@ export function WorkspacePage() {
   }
 
   const files = status?.files ?? []
-  const staged = files.filter((file) => file.staged)
-  const unstaged = files.filter((file) => file.unstaged || file.untracked)
+  const staged = files.filter((file) => file.staged && !file.conflicted)
+  const unstaged = files.filter((file) => (file.unstaged || file.untracked) && !file.conflicted)
   const conflicted = files.filter((file) => file.conflicted)
   const branchLabel = status
     ? status.branch || 'detached'
@@ -338,6 +338,39 @@ export function WorkspacePage() {
       ]
     })
   }
+
+  const renderFileGroup = (
+    title: string,
+    list: StatusFile[],
+    mode: 'unstaged' | 'staged'
+  ) => (
+    <div>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-y border-[var(--border)] bg-[var(--panel-soft)] px-4 py-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+          {title}
+        </span>
+        <span className="text-[10px] tabular-nums text-[var(--faint)]">{list.length}</span>
+      </div>
+      {list.length === 0 ? (
+        <div className="px-4 py-3 text-[11px] text-[var(--faint)]">暂无{title}改动</div>
+      ) : (
+        <div className="divide-y divide-[var(--border)]">
+          {list.map((file) => (
+            <FileRow
+              key={`${mode}:${file.xy}:${file.path}`}
+              file={file}
+              onStage={() => stageFiles([file.path])}
+              onUnstage={() => unstageFiles([file.path])}
+              onOpenDiff={() => setDiffTarget({ file, mode })}
+              onDiscard={() => requestDiscard(file)}
+              onResolve={(side) => resolveConflict(file.path, side)}
+              disabled={loading.mutation}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="flex h-full flex-col overflow-y-auto xl:overflow-hidden">
@@ -580,24 +613,12 @@ export function WorkspacePage() {
                     className="h-full min-h-[200px]"
                   />
                 ) : (
-                  <div className="divide-y divide-[var(--border)]">
-                    {files.map((file) => (
-                      <FileRow
-                        key={`${file.xy}:${file.path}`}
-                        file={file}
-                        onStage={() => stageFiles([file.path])}
-                        onUnstage={() => unstageFiles([file.path])}
-                        onOpenDiff={() =>
-                          setDiffTarget({
-                            file,
-                            mode: file.unstaged || file.untracked ? 'unstaged' : 'staged'
-                          })
-                        }
-                        onDiscard={() => requestDiscard(file)}
-                        onResolve={(side) => resolveConflict(file.path, side)}
-                        disabled={loading.mutation}
-                      />
-                    ))}
+                  <div>
+                    {conflicted.length > 0
+                      ? renderFileGroup('冲突', conflicted, 'unstaged')
+                      : null}
+                    {renderFileGroup('未暂存', unstaged, 'unstaged')}
+                    {renderFileGroup('已暂存', staged, 'staged')}
                   </div>
                 )}
               </div>
