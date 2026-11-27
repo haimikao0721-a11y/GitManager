@@ -279,7 +279,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     version: '0.0.2',
     repos: [],
     selectedRepoPath: '',
-    activePage: 'repos',
+    activePage: 'workspace',
     sidebarCollapsed: false,
     workspaceTab: 'changes',
     historyFilter: 'all',
