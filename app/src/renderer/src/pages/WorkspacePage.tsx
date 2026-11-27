@@ -638,7 +638,7 @@ export function WorkspacePage() {
           </div>
         ) : null}
 
-        <div className="relative grid grid-cols-1 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[224px_minmax(0,1fr)]">
+        <div className="relative grid grid-cols-1 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[212px_minmax(0,1fr)]">
           <Card className="flex min-h-[260px] flex-col xl:min-h-0">
             <div className="flex shrink-0 items-center justify-between gap-1 border-b border-[var(--border)] px-2 py-1.5">
               <div className="inline-flex min-w-0 flex-1 items-center rounded-md bg-[var(--panel-soft)] p-0.5 text-[11px]">
@@ -1330,7 +1330,7 @@ function BranchNodesPanel({
   return (
     <Card
       style={{ boxShadow: 'var(--shadow-lg)' }}
-      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[236px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
+      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[224px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">

@@ -15,7 +15,7 @@ import { DiffView } from '@/components/DiffView'
 import { cn, copyText, graphColor, parseDecorations } from '@/lib/utils'
 
 const ROW_HEIGHT = 44
-const LANE_WIDTH = 16
+const LANE_WIDTH = 14
 
 export function HistoryView() {
   const repos = useAppStore((state) => state.repos)
@@ -36,10 +36,11 @@ export function HistoryView() {
   const rows = history?.rows ?? []
   const [diffHash, setDiffHash] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(620)
-  const [containerWidth, setContainerWidth] = useState(640)
+  const [containerWidth, setContainerWidth] = useState(520)
 
   useEffect(() => {
     if (!selectedRepoPath) return
@@ -57,27 +58,28 @@ export function HistoryView() {
   }, [rows, selectedHash, setSelectedHash])
 
   useEffect(() => {
-    const element = scrollRef.current
-    if (!element) return
+    const card = cardRef.current
+    if (!card) return
     const update = () => {
-      setViewport(element.clientHeight)
-      setContainerWidth(element.clientWidth)
+      setContainerWidth(card.clientWidth)
+      if (scrollRef.current) setViewport(scrollRef.current.clientHeight)
     }
     update()
     const observer = new ResizeObserver(update)
-    observer.observe(element)
+    observer.observe(card)
+    if (scrollRef.current) observer.observe(scrollRef.current)
     return () => observer.disconnect()
-  }, [])
+  }, [rows.length, loading.history])
 
   const maxLane = useMemo(
     () => rows.reduce((max, row) => Math.max(max, row.maxLane), 0),
     [rows]
   )
-  const graphWidth = Math.min(280, Math.max(54, 24 + (maxLane + 1) * LANE_WIDTH))
-  const showAuthor = containerWidth >= 820
-  const showTagsCol = containerWidth >= 510
-  const showDateCol = containerWidth >= 400
-  const tagsWidth = containerWidth >= 700 ? 184 : 138
+  const graphWidth = Math.min(260, Math.max(48, 20 + (maxLane + 1) * LANE_WIDTH))
+  const showAuthor = containerWidth >= 840
+  const showTagsCol = containerWidth >= 680
+  const showDateCol = containerWidth >= 360
+  const tagsWidth = containerWidth >= 780 ? 196 : 156
   const gridColumns = [
     `${graphWidth}px`,
     'minmax(0,1fr)',
@@ -85,7 +87,7 @@ export function HistoryView() {
     ...(showAuthor ? ['88px'] : []),
     ...(showDateCol ? ['74px'] : [])
   ].join(' ')
-  const tagMax = containerWidth >= 700 ? 2 : 1
+  const tagMax = containerWidth >= 780 ? 2 : 1
 
   const localBranches = branches.filter((branch) => branch.type === 'local')
   const remoteBranches = branches.filter((branch) => branch.type === 'remote')
@@ -103,11 +105,11 @@ export function HistoryView() {
   if (!repo) return null
 
   return (
-    <div className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
+    <div ref={cardRef} className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
       <Card className="flex min-h-[260px] flex-1 flex-col xl:min-h-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2">
           <div className="flex items-center gap-3">
-            <div className="w-[210px]">
+            <div className="w-[168px]">
               <Select value={historyFilter} onChange={(event) => selectFilter(event.target.value)} className="h-8 text-xs">
                 <option value="all">全部分支与标签</option>
                 <option value="current">当前分支（含上游）</option>
@@ -235,21 +237,21 @@ export function HistoryView() {
                       <div className="relative h-full">
                         <GraphCell row={row} width={graphWidth} height={ROW_HEIGHT} selected={selected} />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--text-strong)]" title={row.subject}>
                             {row.subject || '(无提交说明)'}
                           </div>
                           {!showTagsCol && row.decorations ? (
-                            <div className="flex shrink-0 flex-nowrap items-center gap-1 overflow-hidden">
+                            <div className="flex max-w-[46%] shrink-0 flex-nowrap items-center gap-1 overflow-hidden">
                               <DecorationChips decorations={row.decorations} max={1} compact />
                             </div>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
+                        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-[var(--faint)]">
                           <span className="code-font shrink-0">{row.hash}</span>
                           <span>·</span>
-                          <span className="truncate">{row.author}</span>
+                          <span className="min-w-0 truncate">{row.author}</span>
                           {!showDateCol ? (
                             <>
                               <span>·</span>
@@ -306,7 +308,7 @@ function GraphCell({
   selected: boolean
 }) {
   const mid = height / 2
-  const x = (lane: number) => 14 + lane * LANE_WIDTH
+  const x = (lane: number) => 12 + lane * LANE_WIDTH
   const nodeX = x(row.lane)
   const nodeColor = graphColor(row.color)
   const chips = parseDecorations(row.decorations)

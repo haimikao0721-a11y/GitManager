@@ -282,7 +282,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     inspectorOpen: true,
     inspectorFocus: 'commit',
     inspectorTab: 'commit',
-    inspectorWidth: 440,
+    inspectorWidth: 380,
     selectedCommitHash: '',
     selectedCommitFile: '',
     selectedWorkFile: null,
@@ -347,7 +347,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     setInspectorFocus: (focus) => set({ inspectorFocus: focus }),
     setInspectorTab: (tab) => set({ inspectorTab: tab }),
     setInspectorWidth: (width) =>
-      set({ inspectorWidth: Math.max(320, Math.min(760, Math.round(width))) }),
+      set({ inspectorWidth: Math.max(300, Math.min(720, Math.round(width))) }),
     setSelectedCommitHash: (hash) => set({ selectedCommitHash: hash, selectedCommitFile: '' }),
     setSelectedCommitFile: (file) => set({ selectedCommitFile: file }),
     setSelectedWorkFile: (file) => set({ selectedWorkFile: file }),

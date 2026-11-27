@@ -287,7 +287,7 @@ export function SideInspectorPanel({
 
   if (!repo) return null
 
-  const isExpanded = inspectorWidth >= 560
+  const isExpanded = inspectorWidth >= 520
   const headerHash = selectedHistoryRow?.hash || details?.shortHash || ''
   const headerAuthor = selectedHistoryRow?.author || details?.author || ''
   const headerDate = selectedHistoryRow?.date || details?.date || ''
@@ -302,8 +302,8 @@ export function SideInspectorPanel({
 
   return (
     <aside
-      style={{ width: inspectorWidth }}
-      className="relative flex h-full shrink-0 flex-col border-l border-[var(--border)] bg-[var(--panel-solid)]"
+      style={{ width: `min(${inspectorWidth}px, 46vw)` }}
+      className="relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--panel-solid)]"
     >
       <div
         role="separator"
@@ -409,7 +409,7 @@ export function SideInspectorPanel({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => setInspectorWidth(isExpanded ? 440 : 640)}
+              onClick={() => setInspectorWidth(isExpanded ? 380 : 580)}
             >
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
@@ -588,7 +588,7 @@ function CommitTab({
   }
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-4">
+    <div className="h-full min-w-0 space-y-4 overflow-y-auto overflow-x-hidden p-4">
       {!isHistoryMode ? (
         <div className="rounded-md border border-[var(--border)] bg-[var(--panel-soft)] p-3">
           <div className="flex items-center justify-between gap-2">
@@ -638,7 +638,7 @@ function CommitTab({
             <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">
               {isHistoryMode ? '提交说明' : '最新 HEAD 提交'}
             </div>
-            <div className="text-[13px] font-semibold leading-6 text-[var(--text-strong)]">
+            <div className="break-words text-[13px] font-semibold leading-6 text-[var(--text-strong)]">
               {details?.subject || row?.subject || '(无提交说明)'}
             </div>
             {details?.body ? (
