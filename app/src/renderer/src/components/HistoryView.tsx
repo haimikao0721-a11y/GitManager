@@ -39,6 +39,7 @@ export function HistoryView() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(620)
+  const [containerWidth, setContainerWidth] = useState(640)
 
   useEffect(() => {
     if (!selectedRepoPath) return
@@ -58,7 +59,10 @@ export function HistoryView() {
   useEffect(() => {
     const element = scrollRef.current
     if (!element) return
-    const update = () => setViewport(element.clientHeight)
+    const update = () => {
+      setViewport(element.clientHeight)
+      setContainerWidth(element.clientWidth)
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(element)
@@ -69,7 +73,19 @@ export function HistoryView() {
     () => rows.reduce((max, row) => Math.max(max, row.maxLane), 0),
     [rows]
   )
-  const graphWidth = Math.min(340, Math.max(80, 28 + (maxLane + 1) * LANE_WIDTH))
+  const graphWidth = Math.min(280, Math.max(54, 24 + (maxLane + 1) * LANE_WIDTH))
+  const showAuthor = containerWidth >= 820
+  const showTagsCol = containerWidth >= 510
+  const showDateCol = containerWidth >= 400
+  const tagsWidth = containerWidth >= 700 ? 184 : 138
+  const gridColumns = [
+    `${graphWidth}px`,
+    'minmax(0,1fr)',
+    ...(showTagsCol ? [`${tagsWidth}px`] : []),
+    ...(showAuthor ? ['88px'] : []),
+    ...(showDateCol ? ['74px'] : [])
+  ].join(' ')
+  const tagMax = containerWidth >= 700 ? 2 : 1
 
   const localBranches = branches.filter((branch) => branch.type === 'local')
   const remoteBranches = branches.filter((branch) => branch.type === 'remote')
@@ -125,14 +141,14 @@ export function HistoryView() {
         </div>
 
         <div
-          className="grid shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 py-2 text-xs font-medium text-[var(--faint)]"
-          style={{ gridTemplateColumns: `${graphWidth}px minmax(0,1fr) 240px 96px 88px` }}
+          className="grid shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-3.5 py-2 text-xs font-medium text-[var(--faint)]"
+          style={{ gridTemplateColumns: gridColumns }}
         >
-          <span>图形</span>
-          <span>提交</span>
-          <span className="hidden xl:block">分支 / 标签</span>
-          <span className="hidden xl:block">作者</span>
-          <span className="text-right">日期</span>
+          <span className="whitespace-nowrap">图形</span>
+          <span className="whitespace-nowrap">提交</span>
+          {showTagsCol ? <span className="whitespace-nowrap">分支 / 标签</span> : null}
+          {showAuthor ? <span className="whitespace-nowrap">作者</span> : null}
+          {showDateCol ? <span className="whitespace-nowrap text-right">日期</span> : null}
         </div>
 
         {loading.history && rows.length === 0 ? (
@@ -146,7 +162,7 @@ export function HistoryView() {
         ) : (
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto"
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
             <div className="relative" style={{ height: rows.length * ROW_HEIGHT }}>
@@ -213,29 +229,46 @@ export function HistoryView() {
                     }}
                   >
                     <div
-                      className="grid h-full items-center gap-3 px-4"
-                      style={{
-                        gridTemplateColumns: `${graphWidth}px minmax(0,1fr) 240px 96px 88px`
-                      }}
+                      className="grid h-full items-center gap-2.5 px-3.5"
+                      style={{ gridTemplateColumns: gridColumns }}
                     >
                       <div className="relative h-full">
                         <GraphCell row={row} width={graphWidth} height={ROW_HEIGHT} selected={selected} />
                       </div>
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-[var(--text-strong)]" title={row.subject}>
-                          {row.subject || '(无提交说明)'}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--text-strong)]" title={row.subject}>
+                            {row.subject || '(无提交说明)'}
+                          </div>
+                          {!showTagsCol && row.decorations ? (
+                            <div className="flex shrink-0 flex-nowrap items-center gap-1 overflow-hidden">
+                              <DecorationChips decorations={row.decorations} max={1} compact />
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
-                          <span className="code-font">{row.hash}</span>
+                          <span className="code-font shrink-0">{row.hash}</span>
                           <span>·</span>
                           <span className="truncate">{row.author}</span>
+                          {!showDateCol ? (
+                            <>
+                              <span>·</span>
+                              <span className="shrink-0 tabular-nums">{row.date}</span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
-                      <div className="hidden min-w-0 flex-wrap items-center gap-1 xl:flex">
-                        <DecorationChips decorations={row.decorations} max={4} />
-                      </div>
-                      <div className="hidden truncate text-xs text-[var(--muted)] xl:block">{row.author}</div>
-                      <div className="text-right text-[11px] tabular-nums text-[var(--faint)]">{row.date}</div>
+                      {showTagsCol ? (
+                        <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+                          <DecorationChips decorations={row.decorations} max={tagMax} compact={containerWidth < 700} />
+                        </div>
+                      ) : null}
+                      {showAuthor ? (
+                        <div className="truncate text-xs text-[var(--muted)]">{row.author}</div>
+                      ) : null}
+                      {showDateCol ? (
+                        <div className="text-right text-[11px] tabular-nums text-[var(--faint)]">{row.date}</div>
+                      ) : null}
                     </div>
                   </div>
                 )
@@ -379,7 +412,15 @@ function GraphCell({
   )
 }
 
-function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: number }) {
+function DecorationChips({
+  decorations,
+  max = 4,
+  compact = false
+}: {
+  decorations: string
+  max?: number
+  compact?: boolean
+}) {
   const chips = parseDecorations(decorations)
   if (chips.length === 0) return null
   const visible = chips.slice(0, max)
@@ -391,7 +432,8 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
         <span
           key={`${chip.text}-${index}`}
           className={cn(
-            'max-w-[128px] truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
+            'shrink-0 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-3.5',
+            compact ? 'max-w-[96px]' : 'max-w-[128px]',
             chip.kind === 'head' && 'border-transparent bg-[var(--text-strong)] text-[var(--bg)]',
             chip.kind === 'tag' && 'border-[var(--warning-border)] bg-[var(--warning-soft)] text-[var(--warning)]',
             chip.kind === 'remote' && 'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]',
@@ -404,7 +446,7 @@ function DecorationChips({ decorations, max = 4 }: { decorations: string; max?: 
       ))}
       {more > 0 ? (
         <span
-          className="rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]"
+          className="shrink-0 rounded border border-[var(--border)] bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]"
           title={hidden.map((chip) => chip.text).join('\n')}
         >
           +{more}

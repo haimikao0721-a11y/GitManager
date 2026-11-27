@@ -505,115 +505,108 @@ export function WorkspacePage() {
   )
 
   return (
-    <div className="flex h-full min-w-0 overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto xl:overflow-hidden">
-        <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col px-6 py-5 xl:min-h-0">
-        <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="w-[196px]">
-                <Select
-                  value={selectedRepoPath}
-                  onChange={(event) => selectRepo(event.target.value)}
-                  aria-label="切换仓库"
-                  className="font-semibold text-[var(--text-strong)]"
-                >
-                  {repos.map((item) => (
-                    <option key={item.path} value={item.path}>
-                      {item.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Badge variant={branchLabel === 'detached' ? 'warning' : 'outline'}>
-                <GitBranch className="h-3 w-3" />
-                {branchLabel}
-              </Badge>
-              {status?.upstream ? <Badge variant="muted">↑ {status.upstream}</Badge> : null}
-              {status && status.ahead > 0 ? (
-                <Badge variant="success">
-                  <ArrowUp className="h-3 w-3" /> {status.ahead}
-                </Badge>
-              ) : null}
-              {status && status.behind > 0 ? (
-                <Badge variant="warning">
-                  <ArrowDown className="h-3 w-3" /> {status.behind}
-                </Badge>
-              ) : null}
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--faint)]">
-              <span className="code-font" title={repo.path}>
-                {shortPath(repo.path, 84)}
-              </span>
-              {currentAccount ? (
-                <>
-                  <span>·</span>
-                  <span className="inline-flex items-center gap-1 text-[var(--muted)]">
-                    <UserRound className="h-3 w-3" /> {currentAccount.name}
-                  </span>
-                </>
-              ) : null}
-            </div>
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] bg-[var(--panel-solid)]/70 px-5 py-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="w-[188px]">
+            <Select
+              value={selectedRepoPath}
+              onChange={(event) => selectRepo(event.target.value)}
+              aria-label="切换仓库"
+              className="h-8 font-semibold text-[var(--text-strong)]"
+            >
+              {repos.map((item) => (
+                <option key={item.path} value={item.path}>
+                  {item.name}
+                </option>
+              ))}
+            </Select>
           </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Button variant="secondary" size="sm" loading={loading.mutation} onClick={fetchRepo}>
-              <Download className="h-3.5 w-3.5" /> Fetch
-            </Button>
-            <Button variant="secondary" size="sm" loading={loading.mutation} onClick={pullRepo}>
-              <ArrowDown className="h-3.5 w-3.5" /> 拉取
-            </Button>
-            <Button variant="primary" size="sm" loading={loading.mutation} onClick={pushRepo}>
-              <Upload className="h-3.5 w-3.5" /> 推送
-            </Button>
-            <Tooltip content="刷新">
-              <Button
-                variant="ghost"
-                size="icon"
-                loading={loading.repo || loading.history}
-                onClick={async () => {
-                  await refreshRepo({ history: true })
-                  if (inspectedBranch) loadBranchNodes(inspectedBranch)
-                }}
-              >
-                {!(loading.repo || loading.history) ? (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                ) : null}
-              </Button>
-            </Tooltip>
-            <Tooltip content="编辑器">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => window.api.openEditor(repo.path, config?.settings.editor)}
-              >
-                <Code2 className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <Tooltip content="终端">
-              <Button variant="ghost" size="icon" onClick={() => window.api.openTerminal(repo.path)}>
-                <Terminal className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <Tooltip content="打开文件夹">
-              <Button variant="ghost" size="icon" onClick={() => window.api.openPath(repo.path)}>
-                <FolderOpen className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <span className="mx-0.5 h-4 w-px bg-[var(--border)]" />
-            <Tooltip content={inspectorOpen ? '收起右侧面板 (Ctrl+Shift+B)' : '展开右侧面板 (Ctrl+Shift+B)'}>
-              <Button
-                variant={inspectorOpen ? 'secondary' : 'ghost'}
-                size="icon"
-                aria-label="切换右侧面板"
-                aria-pressed={inspectorOpen}
-                onClick={toggleInspector}
-              >
-                <PanelRight className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-          </div>
+          <Badge variant={branchLabel === 'detached' ? 'warning' : 'outline'}>
+            <GitBranch className="h-3 w-3" />
+            {branchLabel}
+          </Badge>
+          {status?.upstream ? <Badge variant="muted">↑ {status.upstream}</Badge> : null}
+          {status && status.ahead > 0 ? (
+            <Badge variant="success">
+              <ArrowUp className="h-3 w-3" /> {status.ahead}
+            </Badge>
+          ) : null}
+          {status && status.behind > 0 ? (
+            <Badge variant="warning">
+              <ArrowDown className="h-3 w-3" /> {status.behind}
+            </Badge>
+          ) : null}
+          <span className="code-font hidden text-xs text-[var(--faint)] min-[1280px]:inline" title={repo.path}>
+            {shortPath(repo.path, 48)}
+          </span>
+          {currentAccount ? (
+            <span className="hidden items-center gap-1 text-xs text-[var(--muted)] lg:inline-flex">
+              <UserRound className="h-3 w-3" /> {currentAccount.name}
+            </span>
+          ) : null}
         </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button variant="secondary" size="sm" loading={loading.mutation} onClick={fetchRepo}>
+            <Download className="h-3.5 w-3.5" /> Fetch
+          </Button>
+          <Button variant="secondary" size="sm" loading={loading.mutation} onClick={pullRepo}>
+            <ArrowDown className="h-3.5 w-3.5" /> 拉取
+          </Button>
+          <Button variant="primary" size="sm" loading={loading.mutation} onClick={pushRepo}>
+            <Upload className="h-3.5 w-3.5" /> 推送
+          </Button>
+          <Tooltip content="刷新">
+            <Button
+              variant="ghost"
+              size="icon"
+              loading={loading.repo || loading.history}
+              onClick={async () => {
+                await refreshRepo({ history: true })
+                if (inspectedBranch) loadBranchNodes(inspectedBranch)
+              }}
+            >
+              {!(loading.repo || loading.history) ? <RefreshCw className="h-3.5 w-3.5" /> : null}
+            </Button>
+          </Tooltip>
+          <Tooltip content="编辑器">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => window.api.openEditor(repo.path, config?.settings.editor)}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="终端">
+            <Button variant="ghost" size="icon" onClick={() => window.api.openTerminal(repo.path)}>
+              <Terminal className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="打开文件夹">
+            <Button variant="ghost" size="icon" onClick={() => window.api.openPath(repo.path)}>
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+          <span className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+          <Tooltip content={inspectorOpen ? '收起右侧面板 (Ctrl+Shift+B)' : '展开右侧面板 (Ctrl+Shift+B)'}>
+            <Button
+              variant={inspectorOpen ? 'secondary' : 'ghost'}
+              size="icon"
+              aria-label="切换右侧面板"
+              aria-pressed={inspectorOpen}
+              onClick={toggleInspector}
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto xl:overflow-hidden">
+          <div className="flex w-full flex-1 flex-col p-4 xl:min-h-0">
 
         {status?.hasConflicts ? (
           <div className="mb-4 flex shrink-0 items-center gap-2.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3.5 py-2.5 text-xs text-[var(--danger)]">
@@ -645,7 +638,7 @@ export function WorkspacePage() {
           </div>
         ) : null}
 
-        <div className="relative grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[232px_minmax(0,1fr)]">
+        <div className="relative grid grid-cols-1 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[224px_minmax(0,1fr)]">
           <Card className="flex min-h-[260px] flex-col xl:min-h-0">
             <div className="flex shrink-0 items-center justify-between gap-1 border-b border-[var(--border)] px-2 py-1.5">
               <div className="inline-flex min-w-0 flex-1 items-center rounded-md bg-[var(--panel-soft)] p-0.5 text-[11px]">
@@ -1239,6 +1232,7 @@ export function WorkspacePage() {
           onOpenFileModal={(file, mode) => setDiffTarget({ file, mode })}
         />
       ) : null}
+      </div>
     </div>
   )
 }
@@ -1336,7 +1330,7 @@ function BranchNodesPanel({
   return (
     <Card
       style={{ boxShadow: 'var(--shadow-lg)' }}
-      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[252px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
+      className="flex min-h-[320px] max-h-[460px] flex-col border-[var(--border-strong)] bg-[var(--panel-solid)] xl:absolute xl:bottom-0 xl:left-[236px] xl:top-0 xl:z-20 xl:max-h-none xl:w-[356px]"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
