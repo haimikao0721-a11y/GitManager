@@ -259,7 +259,7 @@ export function DiffView({
                 {section.header.map((line, index) => (
                   <div
                     key={`h-${index}`}
-                    className="whitespace-pre border-b border-[var(--border)]/40 bg-[var(--panel-soft)] px-3 py-0.5 text-[var(--faint)]"
+                    className="whitespace-pre border-b border-[var(--border)] bg-[var(--panel-soft)] px-3 py-0.5 text-[var(--faint)]"
                   >
                     {line}
                   </div>
@@ -267,7 +267,7 @@ export function DiffView({
                 {section.hunks.map((hunk, hunkIndex) => {
                   return (
                     <div key={`${hunk.header}-${hunkIndex}`}>
-                      <div className="flex items-center gap-2 border-y border-[var(--border)]/50 bg-[var(--accent-soft)]/35 px-2 py-1">
+                      <div className="flex items-center gap-2 border-y border-[var(--border)] bg-[var(--diff-hunk-bg)] px-2 py-1">
                         <span className="min-w-0 flex-1 truncate text-[var(--accent)]">{hunk.header}</span>
                         {canPatch ? (
                           <button
@@ -314,14 +314,28 @@ function HunkLines({ hunk }: { hunk: DiffHunk }) {
             key={`${index}-${line}`}
             className={cn(
               'flex whitespace-pre',
-              kind === 'add' && 'bg-[var(--success-soft)]/35',
-              kind === 'del' && 'bg-[var(--danger-soft)]/35'
+              kind === 'add' && 'bg-[var(--diff-add-bg)]',
+              kind === 'del' && 'bg-[var(--diff-del-bg)]'
             )}
           >
-            <span className="w-10 shrink-0 select-none border-r border-[var(--border)]/40 px-1 text-right text-[var(--faint)]">
+            <span
+              className={cn(
+                'w-10 shrink-0 select-none border-r border-[var(--border)] px-1 text-right',
+                kind === 'add' && 'bg-[var(--diff-add-gutter)] text-[var(--success)]',
+                kind === 'del' && 'bg-[var(--diff-del-gutter)] text-[var(--danger)]',
+                kind === 'ctx' && 'text-[var(--faint)]'
+              )}
+            >
               {oldNumber}
             </span>
-            <span className="w-10 shrink-0 select-none border-r border-[var(--border)]/40 px-1 text-right text-[var(--faint)]">
+            <span
+              className={cn(
+                'w-10 shrink-0 select-none border-r border-[var(--border)] px-1 text-right',
+                kind === 'add' && 'bg-[var(--diff-add-gutter)] text-[var(--success)]',
+                kind === 'del' && 'bg-[var(--diff-del-gutter)] text-[var(--danger)]',
+                kind === 'ctx' && 'text-[var(--faint)]'
+              )}
+            >
               {newNumber}
             </span>
             <span

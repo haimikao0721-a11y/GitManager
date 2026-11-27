@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   FolderGit2,
   GitBranch,
-  GitCommitHorizontal,
   Leaf,
   Moon,
+  PanelLeft,
+  PanelRight,
   RefreshCw,
   Search,
   Settings2,
@@ -28,11 +29,12 @@ export function CommandPalette() {
   const open = useAppStore((state) => state.paletteOpen)
   const setOpen = useAppStore((state) => state.setPaletteOpen)
   const setActivePage = useAppStore((state) => state.setActivePage)
-  const setWorkspaceTab = useAppStore((state) => state.setWorkspaceTab)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
+  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed)
+  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
+  const inspectorOpen = useAppStore((state) => state.inspectorOpen)
+  const toggleInspector = useAppStore((state) => state.toggleInspector)
   const scanRepos = useAppStore((state) => state.scanRepos)
   const refreshRepo = useAppStore((state) => state.refreshRepo)
-  const refreshHistory = useAppStore((state) => state.refreshHistory)
   const fetchRepo = useAppStore((state) => state.fetchRepo)
   const updateSettings = useAppStore((state) => state.updateSettings)
   const config = useAppStore((state) => state.config)
@@ -59,29 +61,31 @@ export function CommandPalette() {
     const nextThemeLabel = nextTheme === 'dark' ? '深色' : nextTheme === 'light' ? '浅色' : '护眼'
 
     const base: Command[] = [
-      { id: 'accounts', label: '账户', icon: Users, run: navigate('accounts') },
       { id: 'repos', label: '仓库', icon: FolderGit2, run: navigate('repos') },
-      {
-        id: 'workspace',
-        label: '工作区（变更）',
-        icon: GitBranch,
-        run: () => {
-          setWorkspaceTab('changes')
-          setActivePage('workspace')
-          setOpen(false)
-        }
-      },
-      {
-        id: 'history',
-        label: '工作区（提交历史）',
-        icon: GitCommitHorizontal,
-        run: () => {
-          setWorkspaceTab('history')
-          setActivePage('workspace')
-          setOpen(false)
-        }
-      },
+      { id: 'workspace', label: '工作区（提交、变更与历史）', icon: GitBranch, run: navigate('workspace') },
+      { id: 'accounts', label: '账户管理', icon: Users, run: navigate('accounts') },
       { id: 'settings', label: '设置', icon: Settings2, run: navigate('settings') },
+      {
+        id: 'toggle-sidebar',
+        label: sidebarCollapsed ? '展开左侧栏' : '收起左侧栏',
+        meta: 'Ctrl B',
+        icon: PanelLeft,
+        run: () => {
+          toggleSidebar()
+          setOpen(false)
+        }
+      },
+      {
+        id: 'toggle-inspector',
+        label: inspectorOpen ? '收起右侧详情栏' : '展开右侧详情栏',
+        meta: 'Ctrl Shift B',
+        icon: PanelRight,
+        run: () => {
+          setActivePage('workspace')
+          toggleInspector()
+          setOpen(false)
+        }
+      },
       {
         id: 'scan',
         label: '扫描仓库',
@@ -96,8 +100,7 @@ export function CommandPalette() {
         label: '刷新当前数据',
         icon: RefreshCw,
         run: () => {
-          if (activePage === 'workspace' && workspaceTab === 'history') refreshHistory()
-          else refreshRepo({ history: false })
+          refreshRepo({ history: activePage === 'workspace' })
           setOpen(false)
         }
       },
@@ -137,16 +140,17 @@ export function CommandPalette() {
     activePage,
     config?.settings.theme,
     fetchRepo,
-    refreshHistory,
+    inspectorOpen,
     refreshRepo,
-    repos,
     scanRepos,
     selectRepo,
     setActivePage,
-    setWorkspaceTab,
+    sidebarCollapsed,
     setOpen,
+    toggleInspector,
+    toggleSidebar,
     updateSettings,
-    workspaceTab
+    repos
   ])
 
   const filtered = useMemo(() => {

@@ -8,6 +8,7 @@ import type {
   GitHubUser,
   GitProxyState,
   HistoryResult,
+  InspectorFocus,
   InspectorTab,
   PageId,
   RepoInfo,
@@ -69,16 +70,61 @@ interface PendingMutation {
   path: string
 }
 
+interface RepoWorkspaceSnapshot {
+  historyFilter: string
+  inspectorFocus: InspectorFocus
+  inspectorTab: InspectorTab
+  selectedCommitHash: string
+  selectedCommitFile: string
+  selectedWorkFile: { path: string; mode: 'unstaged' | 'staged' } | null
+  status: RepoStatus | null
+  branches: Branch[]
+  history: HistoryResult | null
+  stashes: Stash[]
+}
+
+const OPEN_REPOS_STORAGE_KEY = 'gitmanager.openRepos.v1'
+
+function loadPersistedOpenRepos(): { openRepoPaths: string[]; selectedRepoPath: string } {
+  try {
+    const raw = window.localStorage.getItem(OPEN_REPOS_STORAGE_KEY)
+    if (!raw) return { openRepoPaths: [], selectedRepoPath: '' }
+    const parsed = JSON.parse(raw) as { openRepoPaths?: unknown; selectedRepoPath?: unknown }
+    const openRepoPaths = Array.isArray(parsed.openRepoPaths)
+      ? parsed.openRepoPaths.filter((item): item is string => typeof item === 'string' && item.length > 0)
+      : []
+    const selectedRepoPath = typeof parsed.selectedRepoPath === 'string' ? parsed.selectedRepoPath : ''
+    return { openRepoPaths: [...new Set(openRepoPaths)], selectedRepoPath }
+  } catch {
+    return { openRepoPaths: [], selectedRepoPath: '' }
+  }
+}
+
+function persistOpenRepos(openRepoPaths: string[], selectedRepoPath: string): void {
+  try {
+    window.localStorage.setItem(
+      OPEN_REPOS_STORAGE_KEY,
+      JSON.stringify({ openRepoPaths, selectedRepoPath })
+    )
+  } catch {
+    // Ignore storage quota or sandbox restrictions.
+  }
+}
+
 interface AppState {
   config: AppConfig | null
   system: SystemInfo | null
   version: string
   repos: RepoInfo[]
+  openRepoPaths: string[]
+  repoSnapshots: Record<string, RepoWorkspaceSnapshot>
   selectedRepoPath: string
   activePage: PageId
+  sidebarCollapsed: boolean
   workspaceTab: WorkspaceTab
   historyFilter: string
   inspectorOpen: boolean
+  inspectorFocus: InspectorFocus
   inspectorTab: InspectorTab
   inspectorWidth: number
   selectedCommitHash: string
@@ -101,9 +147,12 @@ interface AppState {
 
   bootstrap: () => Promise<void>
   setActivePage: (page: PageId) => void
+  setSidebarCollapsed: (collapsed: boolean) => void
+  toggleSidebar: () => void
   setWorkspaceTab: (tab: WorkspaceTab) => void
   setInspectorOpen: (open: boolean) => void
   toggleInspector: () => void
+  setInspectorFocus: (focus: InspectorFocus) => void
   setInspectorTab: (tab: InspectorTab) => void
   setInspectorWidth: (width: number) => void
   setSelectedCommitHash: (hash: string) => void
@@ -122,6 +171,8 @@ interface AppState {
 
   scanRepos: (roots?: string[]) => Promise<void>
   selectRepo: (path: string) => Promise<void>
+  closeRepoTab: (path: string) => Promise<void>
+  switchRepoTabByOffset: (delta: -1 | 1) => Promise<void>
   refreshRepo: (options?: { history?: boolean }) => Promise<void>
   refreshHistory: (filter?: string) => Promise<void>
   refreshReposLight: () => Promise<void>
@@ -267,18 +318,44 @@ export const useAppStore = create<AppState>()((set, get) => {
     }
   }
 
+  const persistedRepos = loadPersistedOpenRepos()
+
+  const snapshotCurrentRepo = (): Record<string, RepoWorkspaceSnapshot> => {
+    const state = get()
+    if (!state.selectedRepoPath) return state.repoSnapshots
+    return {
+      ...state.repoSnapshots,
+      [state.selectedRepoPath]: {
+        historyFilter: state.historyFilter,
+        inspectorFocus: state.inspectorFocus,
+        inspectorTab: state.inspectorTab,
+        selectedCommitHash: state.selectedCommitHash,
+        selectedCommitFile: state.selectedCommitFile,
+        selectedWorkFile: state.selectedWorkFile,
+        status: state.status,
+        branches: state.branches,
+        history: state.history,
+        stashes: state.stashes
+      }
+    }
+  }
+
   return {
     config: null,
     system: null,
     version: '0.0.2',
     repos: [],
-    selectedRepoPath: '',
-    activePage: 'accounts',
+    openRepoPaths: persistedRepos.openRepoPaths,
+    repoSnapshots: {},
+    selectedRepoPath: persistedRepos.selectedRepoPath,
+    activePage: 'workspace',
+    sidebarCollapsed: false,
     workspaceTab: 'changes',
     historyFilter: 'all',
     inspectorOpen: true,
+    inspectorFocus: 'commit',
     inspectorTab: 'commit',
-    inspectorWidth: 440,
+    inspectorWidth: 380,
     selectedCommitHash: '',
     selectedCommitFile: '',
     selectedWorkFile: null,
@@ -333,12 +410,19 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     setActivePage: (page) => set({ activePage: page }),
-    setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+    setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+    toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+    setWorkspaceTab: (tab) =>
+      set({
+        workspaceTab: tab,
+        inspectorFocus: tab === 'changes' ? 'working' : 'commit'
+      }),
     setInspectorOpen: (open) => set({ inspectorOpen: open }),
     toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),
+    setInspectorFocus: (focus) => set({ inspectorFocus: focus }),
     setInspectorTab: (tab) => set({ inspectorTab: tab }),
     setInspectorWidth: (width) =>
-      set({ inspectorWidth: Math.max(320, Math.min(760, Math.round(width))) }),
+      set({ inspectorWidth: Math.max(300, Math.min(720, Math.round(width))) }),
     setSelectedCommitHash: (hash) => set({ selectedCommitHash: hash, selectedCommitFile: '' }),
     setSelectedCommitFile: (file) => set({ selectedCommitFile: file }),
     setSelectedWorkFile: (file) => set({ selectedWorkFile: file }),
@@ -428,11 +512,18 @@ export const useAppStore = create<AppState>()((set, get) => {
           roots ? { roots } : {}
         )
         set((state) => {
+          const validPaths = new Set(result.repos.map((repo) => repo.path))
           const current = state.selectedRepoPath
-          const exists = result.repos.some((repo) => repo.path === current)
+          const nextSelected = validPaths.has(current) ? current : result.repos[0]?.path ?? ''
+          let nextTabs = state.openRepoPaths.filter((item) => validPaths.has(item))
+          if (nextSelected && !nextTabs.includes(nextSelected)) {
+            nextTabs = [...nextTabs, nextSelected]
+          }
+          persistOpenRepos(nextTabs, nextSelected)
           return {
             repos: result.repos,
-            selectedRepoPath: exists ? current : result.repos[0]?.path ?? ''
+            openRepoPaths: nextTabs,
+            selectedRepoPath: nextSelected
           }
         })
         get().toast('success', `扫描完成，找到 ${result.count} 个仓库`)
@@ -444,8 +535,50 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     selectRepo: async (path) => {
-      if (get().selectedRepoPath === path && get().status) return
+      const state = get()
+      const nextTabs = state.openRepoPaths.includes(path)
+        ? state.openRepoPaths
+        : [...state.openRepoPaths, path]
+
+      if (state.selectedRepoPath === path && state.status) {
+        if (nextTabs !== state.openRepoPaths) {
+          persistOpenRepos(nextTabs, path)
+          set({ openRepoPaths: nextTabs })
+        }
+        return
+      }
+
+      const snapshots = snapshotCurrentRepo()
+      const cached = snapshots[path]
+      persistOpenRepos(nextTabs, path)
+
+      if (cached) {
+        set({
+          repoSnapshots: snapshots,
+          openRepoPaths: nextTabs,
+          selectedRepoPath: path,
+          historyFilter: cached.historyFilter,
+          inspectorFocus: cached.inspectorFocus,
+          inspectorTab: cached.inspectorTab,
+          selectedCommitHash: cached.selectedCommitHash,
+          selectedCommitFile: cached.selectedCommitFile,
+          selectedWorkFile: cached.selectedWorkFile,
+          status: cached.status,
+          branches: cached.branches,
+          stashes: cached.stashes,
+          history: cached.history,
+          lockIssue: null,
+          pendingMutation: null
+        })
+        void get().refreshRepo({
+          history: get().activePage === 'workspace'
+        })
+        return
+      }
+
       set({
+        repoSnapshots: snapshots,
+        openRepoPaths: nextTabs,
         selectedRepoPath: path,
         historyFilter: 'all',
         selectedCommitHash: '',
@@ -459,8 +592,45 @@ export const useAppStore = create<AppState>()((set, get) => {
         pendingMutation: null
       })
       await get().refreshRepo({
-        history: get().activePage === 'workspace' && get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
+    },
+
+    closeRepoTab: async (path) => {
+      const state = get()
+      if (state.openRepoPaths.length <= 1) return
+      const index = state.openRepoPaths.indexOf(path)
+      if (index === -1) return
+      const nextTabs = state.openRepoPaths.filter((item) => item !== path)
+      const nextSnapshots = { ...state.repoSnapshots }
+      delete nextSnapshots[path]
+
+      if (state.selectedRepoPath !== path) {
+        persistOpenRepos(nextTabs, state.selectedRepoPath)
+        set({ openRepoPaths: nextTabs, repoSnapshots: nextSnapshots })
+        return
+      }
+
+      const fallbackPath = nextTabs[Math.min(index, nextTabs.length - 1)] ?? ''
+      set({ openRepoPaths: nextTabs, repoSnapshots: nextSnapshots, selectedRepoPath: '' })
+      if (fallbackPath) {
+        await get().selectRepo(fallbackPath)
+      } else {
+        persistOpenRepos(nextTabs, '')
+      }
+    },
+
+    switchRepoTabByOffset: async (delta) => {
+      const state = get()
+      if (state.openRepoPaths.length <= 1) return
+      const currentIndex = state.openRepoPaths.indexOf(state.selectedRepoPath)
+      const baseIndex = currentIndex === -1 ? 0 : currentIndex
+      const nextIndex = (baseIndex + delta + state.openRepoPaths.length) % state.openRepoPaths.length
+      const target = state.openRepoPaths[nextIndex]
+      if (target) {
+        if (state.activePage !== 'workspace') set({ activePage: 'workspace' })
+        await get().selectRepo(target)
+      }
     },
 
     refreshRepo: async (options = {}) => {
@@ -602,7 +772,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         await call('repo.fetch', { path })
         get().toast('success', '远程分支已更新')
         await get().refreshRepo()
-        if (get().activePage === 'workspace' && get().workspaceTab === 'history') {
+        if (get().activePage === 'workspace') {
           await get().refreshHistory()
         }
       } catch (error) {
@@ -617,7 +787,9 @@ export const useAppStore = create<AppState>()((set, get) => {
     },
 
     pushRepo: async () => {
-      await runRepoMutation('repo.push', {}, '推送完成')
+      await runRepoMutation('repo.push', {}, '推送完成', {
+        history: get().activePage === 'workspace'
+      })
     },
 
     stageFiles: async (paths) => {
@@ -634,7 +806,7 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     commit: async (message, amend = false) => {
       return runRepoMutation('repo.commit', { message, amend }, '提交成功', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
@@ -648,25 +820,25 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     createBranch: async (name, base, switchTo) => {
       return runRepoMutation('repo.branch.create', { name, base, switch: switchTo }, '分支已创建', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     switchBranch: async (name) => {
       return runRepoMutation('repo.branch.switch', { name }, '分支已切换', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     deleteBranch: async (name, force) => {
       return runRepoMutation('repo.branch.delete', { name, force }, '分支已删除', {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 
     checkoutTarget: async (target) => {
       return runRepoMutation('repo.checkout', { target }, `已签出到 ${target}`, {
-        history: get().workspaceTab === 'history'
+        history: get().activePage === 'workspace'
       })
     },
 

@@ -72,7 +72,8 @@ export default function App() {
   const bootError = useAppStore((state) => state.bootError)
   const activePage = useAppStore((state) => state.activePage)
   const setActivePage = useAppStore((state) => state.setActivePage)
-  const workspaceTab = useAppStore((state) => state.workspaceTab)
+  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
+  const switchRepoTabByOffset = useAppStore((state) => state.switchRepoTabByOffset)
   const paletteOpen = useAppStore((state) => state.paletteOpen)
   const setPaletteOpen = useAppStore((state) => state.setPaletteOpen)
   const bootstrap = useAppStore((state) => state.bootstrap)
@@ -96,9 +97,9 @@ export default function App() {
   useEffect(() => {
     if (activePage === 'workspace' && selectedRepoPath) {
       refreshRepo()
-      if (workspaceTab === 'history') refreshHistory()
+      refreshHistory()
     }
-  }, [activePage, refreshHistory, refreshRepo, selectedRepoPath, workspaceTab])
+  }, [activePage, refreshHistory, refreshRepo, selectedRepoPath])
 
   useEffect(() => {
     let timer = 0
@@ -108,7 +109,7 @@ export default function App() {
         const state = useAppStore.getState()
         if (state.activePage !== 'workspace' || !state.selectedRepoPath) return
         if (state.loading.mutation) return
-        void state.refreshRepo({ history: state.workspaceTab === 'history' })
+        void state.refreshRepo({ history: true })
       }, 450)
     }
     const onVisibility = () => {
@@ -125,6 +126,26 @@ export default function App() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        toggleSidebar()
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'PageUp') {
+        event.preventDefault()
+        void switchRepoTabByOffset(-1)
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'PageDown') {
+        event.preventDefault()
+        void switchRepoTabByOffset(1)
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === '[') {
+        event.preventDefault()
+        void switchRepoTabByOffset(-1)
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === ']') {
+        event.preventDefault()
+        void switchRepoTabByOffset(1)
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen(true)
@@ -132,13 +153,13 @@ export default function App() {
       if (event.key === 'Escape' && paletteOpen) setPaletteOpen(false)
       if ((event.ctrlKey || event.metaKey) && /^[1-4]$/.test(event.key)) {
         event.preventDefault()
-        const target = (['accounts', 'repos', 'workspace', 'settings'] as const)[Number(event.key) - 1]
+        const target = (['repos', 'workspace', 'accounts', 'settings'] as const)[Number(event.key) - 1]
         setActivePage(target)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [paletteOpen, setActivePage, setPaletteOpen])
+  }, [paletteOpen, setActivePage, setPaletteOpen, switchRepoTabByOffset, toggleSidebar])
 
   if (!config && loading.bootstrap) {
     return <BootScreen />
